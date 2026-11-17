@@ -25,7 +25,7 @@ export const VmessOutboundFormSettingsSchema = z.object({
 export type VmessOutboundFormSettings = z.infer<typeof VmessOutboundFormSettingsSchema>;
 
 // Reverse sniffing (VLESS) and loopback sniffing share the canonical
-// SniffingSchema - the same definition the inbound Sniffing tab uses - so
+// SniffingSchema — the same definition the inbound Sniffing tab uses — so
 // there is one source of truth for an xray SniffingConfig across the panel.
 const DEFAULT_SNIFFING: Sniffing = {
   enabled: false,
@@ -86,7 +86,7 @@ export const HttpOutboundFormSettingsSchema = z.object({
 export type HttpOutboundFormSettings = z.infer<typeof HttpOutboundFormSettingsSchema>;
 
 // Wireguard peer mirrors the legacy Outbound.WireguardSettings.Peer class.
-// `psk` (form) <-> `preSharedKey` (wire) - adapter renames.
+// `psk` (form) <-> `preSharedKey` (wire) — adapter renames.
 export const WireguardOutboundFormPeerSchema = z.object({
   publicKey: z.string().default(''),
   psk: z.string().default(''),
@@ -97,7 +97,7 @@ export const WireguardOutboundFormPeerSchema = z.object({
 export type WireguardOutboundFormPeer = z.infer<typeof WireguardOutboundFormPeerSchema>;
 
 // Wireguard: `address` and `reserved` are comma-joined strings in the form
-// (the legacy UI binds them to a single Input). pubKey is UI-only - the
+// (the legacy UI binds them to a single Input). pubKey is UI-only — the
 // modal derives it from secretKey via Wireguard.generateKeypair() and
 // displays it disabled; the adapter strips it.
 export const WireguardOutboundFormSettingsSchema = z.object({
@@ -189,7 +189,7 @@ export const DnsOutboundFormSettingsSchema = z.object({
 export type DnsOutboundFormSettings = z.infer<typeof DnsOutboundFormSettingsSchema>;
 
 // Loopback reinjects into a named inbound; `sniffing` (same flat shape as
-// VLESS reverse-sniffing) is only emitted when enabled - see the adapter.
+// VLESS reverse-sniffing) is only emitted when enabled — see the adapter.
 export const LoopbackOutboundFormSettingsSchema = z.object({
   inboundTag: z.string().default(''),
   sniffing: SniffingSchema.default(DEFAULT_SNIFFING),
@@ -229,7 +229,7 @@ export type MuxForm = z.infer<typeof MuxFormSchema>;
 
 // Stream form mirrors the inbound side: NetworkSettings DU + SecuritySettings
 // DU + extras (sockopt). Hysteria gets a side-channel branch in the modal
-// (legacy ob.stream.hysteria) - keeping the DU strict for now and routing
+// (legacy ob.stream.hysteria) — keeping the DU strict for now and routing
 // hysteria transport knobs through the Advanced JSON tab if needed.
 export const OutboundStreamFormSchema =
   NetworkSettingsSchema.and(SecuritySettingsSchema).and(StreamExtrasSchema);
@@ -256,4 +256,3 @@ export type OutboundFormBase = z.infer<typeof OutboundFormBaseSchema>;
 // narrow on `.protocol` to access the matching settings branch.
 export const OutboundFormSchema = OutboundFormBaseSchema.and(OutboundFormSettingsSchema);
 export type OutboundFormValues = z.infer<typeof OutboundFormSchema>;
-

@@ -2,8 +2,8 @@ package xray
 
 import (
 	"bytes"
-	"reflect"
 	"github.com/mhsanaei/3x-ui/v3/internal/aether"
+	"reflect"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 )
@@ -11,7 +11,7 @@ import (
 // Config represents the complete Xray configuration structure.
 // It contains all sections of an Xray config file including inbounds, outbounds, routing, etc.
 type Config struct {
-	AetherOutbounds []aether.Desired `json:"-"`
+	AetherOutbounds  []aether.Desired     `json:"-"`
 	LogConfig        json_util.RawMessage `json:"log"`
 	RouterConfig     json_util.RawMessage `json:"routing"`
 	DNSConfig        json_util.RawMessage `json:"dns,omitempty"`
@@ -32,7 +32,9 @@ type Config struct {
 
 // Equals compares two Config instances for deep equality.
 func (c *Config) Equals(other *Config) bool {
-	if !reflect.DeepEqual(c.AetherOutbounds, other.AetherOutbounds) { return false }
+	if !reflect.DeepEqual(c.AetherOutbounds, other.AetherOutbounds) {
+		return false
+	}
 	if len(c.InboundConfigs) != len(other.InboundConfigs) {
 		return false
 	}
@@ -88,4 +90,3 @@ func (c *Config) Equals(other *Config) bool {
 	}
 	return true
 }
-

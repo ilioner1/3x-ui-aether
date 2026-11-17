@@ -27,11 +27,11 @@ import (
 
 // HTTP-mode probing works by spinning up ONE temporary xray instance per
 // batch: every outbound under test gets its own loopback SOCKS inbound plus
-// an inboundTagoutboundTag routing rule, and the panel then issues a real,
+// an inboundTag→outboundTag routing rule, and the panel then issues a real,
 // individually-timed HTTP request through each inbound. Measuring the request
 // client-side (instead of polling xray's observatory) returns the moment the
 // response lands, yields the actual HTTP status, and allows an httptrace
-// timing breakdown - while the shared process keeps "Test All" at one xray
+// timing breakdown — while the shared process keeps "Test All" at one xray
 // spawn per batch instead of one per outbound. The reported delay comes from
 // a second request on the kept-alive connection, so it reflects the tunnel's
 // real per-request round-trip rather than the stacked SOCKS/proxy/TLS
@@ -45,7 +45,7 @@ const (
 	// probeDrainLimit caps how much response body a probe reads back to keep
 	// the connection reusable for the warm request.
 	probeDrainLimit = 256 << 10
-	// httpProbeConcurrency caps parallel probe requests within a batch -
+	// httpProbeConcurrency caps parallel probe requests within a batch —
 	// enough to keep a batch fast, low enough not to spike CPU with TLS
 	// handshakes on small VPSes.
 	httpProbeConcurrency = 16
@@ -108,7 +108,7 @@ func probeModeLabel(mode string) string {
 // /testOutbound endpoint. Dispatch matches TestOutbounds: mode "tcp" dials
 // the outbound's endpoints directly, anything else routes a real HTTP request
 // through a temp xray instance (UDP-transport outbounds are always forced to
-// the HTTP probe - a raw dial can't measure them).
+// the HTTP probe — a raw dial can't measure them).
 func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allOutboundsJSON string, mode string) (*TestOutboundResult, error) {
 	var ob map[string]any
 	if err := json.Unmarshal([]byte(outboundJSON), &ob); err != nil {
@@ -169,7 +169,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		// A bare TCP dial only proves reachability for TCP-based proxies.
 		// UDP protocols (wireguard, hysteria, kcp/quic transports) ignore
 		// unauthenticated packets, so a raw dial can't tell "reachable" from
-		// "dead" - route them through the real xray probe.
+		// "dead" — route them through the real xray probe.
 		if mode == "tcp" && !outboundTransportIsUDP(ob) && !strings.EqualFold(fmt.Sprint(ob["protocol"]), "aether") {
 			tcpLane = append(tcpLane, tcpEntry{idx: i, ob: ob})
 			continue
@@ -189,7 +189,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		case protocol == "loopback":
 			r.Error = "Loopback outbound cannot be tested"
 		case protocol == "freedom" || protocol == "dns":
-			// Direct/DNS outbounds aren't proxies - an HTTP probe through them
+			// Direct/DNS outbounds aren't proxies — an HTTP probe through them
 			// would only measure the host's own reachability, not a tunnel.
 			r.Error = "Direct/DNS outbound cannot be tested"
 		case seenTags[tag]:
@@ -259,7 +259,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		failAll(err.Error())
 		return results
 	}
-	// The shared process never came up - one structurally-bad outbound can
+	// The shared process never came up — one structurally-bad outbound can
 	// poison the whole batch config. Retry each item in its own isolated
 	// instance so the broken outbound reports xray's real error and the
 	// rest still get tested. Serial: the poisoned case fails fast (~1s).
@@ -286,17 +286,23 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 	defer release()
 
 	cfg := buildBatchTestConfig(items, allOutbounds, ports)
-  probeRoot, err := os.MkdirTemp("", "xui-aether-probe-")
-  if err != nil { return false, err }
-  defer os.RemoveAll(probeRoot)
-  bridged, desired, err := aether.Transform(cfg.OutboundConfigs, probeRoot)
-  if err != nil { return false, err }
-  cfg.OutboundConfigs = json_util.RawMessage(bridged)
-  manager := aether.NewManager(probeRoot, aether.BinaryPath())
-  defer manager.StopAll()
-  ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-  defer cancel()
-  if err := manager.Ensure(ctx, desired); err != nil { return false, err }
+	probeRoot, err := os.MkdirTemp("", "xui-aether-probe-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(probeRoot)
+	bridged, desired, err := aether.Transform(cfg.OutboundConfigs, probeRoot)
+	if err != nil {
+		return false, err
+	}
+	cfg.OutboundConfigs = json_util.RawMessage(bridged)
+	manager := aether.NewManager(probeRoot, aether.BinaryPath())
+	defer manager.StopAll()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	if err := manager.Ensure(ctx, desired); err != nil {
+		return false, err
+	}
 
 	configPath, err := createTestConfigPath()
 	if err != nil {
@@ -317,7 +323,7 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 	release()
 	if err := proc.Start(); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			// Binary missing - per-item retries would all fail the same way.
+			// Binary missing — per-item retries would all fail the same way.
 			return false, fmt.Errorf("Failed to start test xray instance: %w", err)
 		}
 		return true, fmt.Errorf("Failed to start test xray instance: %w", err)
@@ -351,7 +357,7 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 	return false, nil
 }
 
-// portsReadyError distinguishes "process died" (a poisoned config - worth a
+// portsReadyError distinguishes "process died" (a poisoned config — worth a
 // per-item retry) from "ports never opened while alive" (environmental).
 type portsReadyError struct {
 	msg    string
@@ -390,7 +396,7 @@ func buildBatchTestConfig(items []*httpBatchItem, allOutbounds []any, ports []in
 	// allOutbounds is the template's outbound list; subscription outbounds
 	// are injected at runtime and aren't part of it, so append any tested
 	// outbound whose tag is missing. When a tested outbound's tag collides
-	// with a template outbound, the template version wins - same semantics
+	// with a template outbound, the template version wins — same semantics
 	// as the pre-batch tester.
 	outbounds := make([]any, 0, len(allOutbounds)+len(items))
 	outbounds = append(outbounds, allOutbounds...)
@@ -495,11 +501,11 @@ func outboundsContainTag(outbounds []any, tag string) bool {
 
 // probeThroughSocks probes the local SOCKS inbound at the given port and
 // fills result. A first, cold GET proves reachability and carries the
-// httptrace breakdown: any HTTP response - including 4xx/5xx and unfollowed
-// redirects - counts as reachable; only transport-level failures (refused,
+// httptrace breakdown: any HTTP response — including 4xx/5xx and unfollowed
+// redirects — counts as reachable; only transport-level failures (refused,
 // reset, timeout, proxy errors) are failures. Delay is then re-measured on a
-// warm request over the kept-alive connection - the real round-trip through
-// the established tunnel - falling back to the cold total if the warm request
+// warm request over the kept-alive connection — the real round-trip through
+// the established tunnel — falling back to the cold total if the warm request
 // fails. The test URL's hostname is resolved by xray (Go's SOCKS5 client
 // sends the domain to the proxy), so DNS goes through the outbound too.
 func probeThroughSocks(port int, testURL string, timeout time.Duration, realDelay bool, result *TestOutboundResult) {
@@ -521,7 +527,7 @@ func probeThroughSocks(port int, testURL string, timeout time.Duration, realDela
 
 	// Timing breakdown. ConnectStart/Done wrap the TCP dial to the local
 	// inbound (the SOCKS handshake isn't traced, and xray ACKs CONNECT
-	// before dialing upstream - so the real outbound establishment lands in
+	// before dialing upstream — so the real outbound establishment lands in
 	// the TLS phase for https URLs, or inside TTFB for plain http).
 	var (
 		connStart, tlsStart           time.Time
@@ -739,7 +745,7 @@ func parseCloudflareTrace(body string) map[string]string {
 }
 
 // timedWarmGet re-issues the probe request over the transport's kept-alive
-// connection and returns its duration - the tunnel's per-request round-trip.
+// connection and returns its duration — the tunnel's per-request round-trip.
 func timedWarmGet(client *http.Client, testURL string) (int64, bool) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, testURL, nil)
 	if err != nil {
@@ -763,7 +769,7 @@ func drainAndClose(resp *http.Response) {
 }
 
 // reserveLoopbackPorts grabs n free loopback ports and keeps the listeners
-// open so nothing else claims them; release() frees them (idempotent - the
+// open so nothing else claims them; release() frees them (idempotent — the
 // caller releases right before starting xray and again via defer).
 func reserveLoopbackPorts(n int) ([]int, func(), error) {
 	listeners := make([]net.Listener, 0, n)
@@ -799,4 +805,3 @@ func createTestConfigPath() (string, error) {
 	}
 	return path, nil
 }
-

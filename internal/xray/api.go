@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/aether"
+	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	wgutil "github.com/mhsanaei/3x-ui/v3/internal/util/wireguard"
@@ -151,7 +151,7 @@ func (x *XrayAPI) Close() {
 }
 
 // handlerRPCTimeout bounds per-call gRPC handler operations (add/remove inbound,
-// alter user) so a hung core connection cannot block the caller indefinitely -
+// alter user) so a hung core connection cannot block the caller indefinitely —
 // for example while the process restart lock is held.
 const handlerRPCTimeout = 10 * time.Second
 
@@ -202,10 +202,13 @@ func (x *XrayAPI) DelInbound(tag string) error {
 
 // ValidateOutboundConfig builds an outbound JSON object through the vendored
 // xray-core config loader, surfacing the exact error the core would raise at
-// startup - notably v26.7.11's refusal of unencrypted vless/trojan outbounds
+// startup — notably v26.7.11's refusal of unencrypted vless/trojan outbounds
 // whose server address is a public IP or domain.
 func ValidateOutboundConfig(outbound []byte) (err error) {
-	if aether.IsOutbound(outbound) { _, _, err := aether.ParseOutbound(outbound); return err }
+	if aether.IsOutbound(outbound) {
+		_, _, err := aether.ParseOutbound(outbound)
+		return err
+	}
 	ensureXrayAssetLocation()
 	// The loader panics on some third-party values (a short vless encryption, a bad spiderX).
 	defer func() {
@@ -426,7 +429,7 @@ func (x *XrayAPI) DelOutbound(tag string) error {
 // ApplyRoutingConfig replaces the routing rules and balancers of the running
 // Xray core with the given routing section (the JSON value of the top-level
 // "routing" key) via the RoutingService gRPC API. Note that this cannot change
-// routing.domainStrategy/domainMatcher - those are fixed at process start.
+// routing.domainStrategy/domainMatcher — those are fixed at process start.
 func (x *XrayAPI) ApplyRoutingConfig(routing []byte) error {
 	if x.RoutingServiceClient == nil {
 		return common.NewError("xray RoutingServiceClient is not initialized")
@@ -532,7 +535,7 @@ type RouteTestRequest struct {
 
 // RouteTestResult is the routing decision the core reported.
 type RouteTestResult struct {
-	// Matched is false when no routing rule matched - traffic would use the
+	// Matched is false when no routing rule matched — traffic would use the
 	// default (first) outbound and OutboundTag is empty.
 	Matched     bool   `json:"matched"`
 	OutboundTag string `json:"outboundTag"`
@@ -599,7 +602,7 @@ func (x *XrayAPI) TestRoute(req RouteTestRequest) (*RouteTestResult, error) {
 }
 
 // IsMissingHandlerErr reports whether err is xray's response to removing a
-// handler (inbound/outbound) that does not exist - e.g. it was already
+// handler (inbound/outbound) that does not exist — e.g. it was already
 // removed through the runtime API while the panel's config snapshot was
 // stale. Safe to treat as success for removal operations.
 func IsMissingHandlerErr(err error) bool {
@@ -1032,7 +1035,7 @@ func (x *XrayAPI) RemoveUser(inboundTag, email string) error {
 // accrued since the previous call; the counters themselves are never reset.
 // The first call of a process only records baselines, since it may be reading
 // counters that already hold traffic the panel cannot attribute. After that a
-// name the panel has not seen - xray creates a counter on a user's first use -
+// name the panel has not seen — xray creates a counter on a user's first use —
 // and a counter that moved backwards because the core restarted both count
 // from zero, so no client's traffic is dropped for a whole polling interval.
 func (x *XrayAPI) GetTraffic() ([]*Traffic, []*ClientTraffic, error) {
@@ -1219,4 +1222,3 @@ func mapToSlice[T any](m map[string]*T) []*T {
 	}
 	return result
 }
-

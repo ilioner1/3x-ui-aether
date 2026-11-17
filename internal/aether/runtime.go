@@ -11,9 +11,14 @@ import (
 )
 
 func BinaryPath() string {
-	if path := os.Getenv("XUI_AETHER_BINARY"); path != "" { absolute, _ := filepath.Abs(path); return absolute }
+	if path := os.Getenv("XUI_AETHER_BINARY"); path != "" {
+		absolute, _ := filepath.Abs(path)
+		return absolute
+	}
 	name := "aether"
-	if runtime.GOOS == "windows" { name += ".exe" }
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
 	path, _ := filepath.Abs(filepath.Join(config.GetBinFolderPath(), name))
 	return path
 }

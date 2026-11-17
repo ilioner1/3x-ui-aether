@@ -50,4 +50,3 @@ export const OutboundSettingsSchema = z.discriminatedUnion('protocol', [
   z.object({ protocol: z.literal('loopback'), settings: LoopbackOutboundSettingsSchema }),
 ]);
 export type OutboundSettings = z.infer<typeof OutboundSettingsSchema>;
-

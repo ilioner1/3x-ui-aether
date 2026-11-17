@@ -162,7 +162,7 @@ export default function OutboundFormModal({
   useEffect(() => {
     if (!streamAllowed) return;
     /*
-     * Wireguard dials its own UDP - only finalmask/sockopt apply, never a
+     * Wireguard dials its own UDP — only finalmask/sockopt apply, never a
      * transport. Don't seed network 'tcp'; clear a leftover one (from a
      * protocol switch) so the transmission/security blocks stay hidden.
      */
@@ -446,11 +446,13 @@ export default function OutboundFormModal({
                         }}
                       />
 
-                      {protocol !== 'aether' && <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
-                        <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
-                      </FormField>}
+                      {protocol !== 'aether' && (
+                        <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
+                          <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
+                        </FormField>
+                      )}
 
-                      {/* Freedom's own card owns the strategy - the core migrates this
+                      {/* Freedom's own card owns the strategy — the core migrates this
                           root key into the same sockopt value, so two knobs would race. */}
                       {protocol !== 'freedom' && protocol !== 'aether' && (
                         <FormField
@@ -471,7 +473,13 @@ export default function OutboundFormModal({
                       {protocol === 'socks' && <SocksFields />}
                       {protocol === 'masque' && <MasqueFields />}
                       {protocol === 'aether' && (
-                        <FormField label="Aether URI" name="settings.uri" rules={{ validate: rhfZodValidate(AetherOutboundSettingsSchema.shape.uri) }}>
+                        <FormField
+                          label="Aether URI"
+                          name="settings.uri"
+                          rules={{
+                            validate: rhfZodValidate(AetherOutboundSettingsSchema.shape.uri),
+                          }}
+                        >
                           <Input placeholder="aether://IP:443?protocol=masque&transport=h2" />
                         </FormField>
                       )}
@@ -656,4 +664,3 @@ export default function OutboundFormModal({
     </>
   );
 }
-

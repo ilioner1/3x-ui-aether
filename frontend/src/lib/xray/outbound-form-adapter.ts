@@ -106,7 +106,7 @@ const SNIFFING_DEFAULT: Sniffing = {
   domainsExcluded: [],
 };
 
-// Shared by VLESS reverse sniffing and the loopback outbound - both edit the
+// Shared by VLESS reverse sniffing and the loopback outbound — both edit the
 // same xray SniffingConfig. Unknown destOverride tokens are dropped so the
 // value satisfies SniffingSchema's enum.
 function sniffingFromWire(raw: unknown): Sniffing {
@@ -359,7 +359,7 @@ function freedomFromWire(
       logLevel: asString(rr.logLevel),
     };
   });
-  // Legacy ipsBlocked  finalRule(block) backfill
+  // Legacy ipsBlocked → finalRule(block) backfill
   if (finalRules.length === 0) {
     const ipsBlocked = asArray(raw.ipsBlocked).map((x) => asString(x));
     if (ipsBlocked.length > 0) {
@@ -819,7 +819,7 @@ function masqueToWire(s: MasqueOutboundFormSettings) {
 function freedomToWire(s: FreedomOutboundFormSettings) {
   // Legacy semantics: emit fragment only when the user actually populated
   // at least one of the four sub-fields. Defaults like packets='1-3' alone
-  // are not enough - the modal's Fragment Switch sets all four together.
+  // are not enough — the modal's Fragment Switch sets all four together.
   // getFieldsValue(true) may omit `fragment` when the switch is off, so the
   // fallback keeps Object.entries from throwing on undefined (issue #4686).
   const fragment: Partial<FreedomOutboundFormSettings['fragment']> = s.fragment ?? {};
@@ -884,7 +884,7 @@ function dnsToWire(s: DnsOutboundFormSettings) {
 
 function loopbackToWire(s: LoopbackOutboundFormSettings) {
   const result: Raw = { inboundTag: s.inboundTag || undefined };
-  // Sniffing rides only when enabled - a disabled block is a no-op for
+  // Sniffing rides only when enabled — a disabled block is a no-op for
   // xray's BuildSniffingRequest, so omitting it keeps the wire minimal.
   if (s.sniffing.enabled) {
     result.sniffing = sniffingToWire(s.sniffing);
@@ -1052,4 +1052,3 @@ export function formValuesToWirePayload(values: OutboundFormValues): WireOutboun
   }
   return result;
 }
-

@@ -41,4 +41,3 @@ export const OutboundDomainStrategies = Object.freeze([
 ] as const);
 
 export type OutboundDomainStrategy = (typeof OutboundDomainStrategies)[number];
-

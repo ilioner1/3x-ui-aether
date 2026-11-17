@@ -46,6 +46,20 @@ jobs:
           go build -o x-ui/xray-linux-amd64 github.com/xtls/xray-core/main
           bash scripts/install-aether.sh x-ui
           cp x-ui/aether x-ui/xray-linux-amd64 artifacts/
+      - name: Install and start panel on runner
+        run: bash scripts/smoke-aether-panel.sh
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --fix --timeout=10m
+      - name: Full project checks
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+          cd ..
+          make verify
+          go test -race ./internal/aether -count=1
+          go test ./internal/util/link -run '^$' -fuzz FuzzParseLink -fuzztime=30s -parallel=2
       - name: Test real tunnel
         id: live
         continue-on-error: true
@@ -68,3 +82,6 @@ jobs:
         with:
           name: aether-panel-linux-amd64
           path: artifacts/
+      - name: Require successful live tunnel
+        if: always() && steps.live.outcome == 'failure'
+        run: exit 1
