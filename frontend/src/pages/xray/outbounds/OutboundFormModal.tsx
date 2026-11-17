@@ -6,6 +6,7 @@ import { FinalMaskField, SniffingField } from '@/lib/xray/forms/fields';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { JsonEditor } from '@/components/form';
 import { Wireguard } from '@/utils';
+import { AetherOutboundSettingsSchema } from '@/schemas/protocols/outbound/aether';
 import { formValuesToWirePayload, rawOutboundToFormValues } from '@/lib/xray/outbound-form-adapter';
 import { parseOutboundLink } from '@/lib/xray/outbound-link-parser';
 import XDriveForm from '@/lib/xray/forms/transport/XDriveForm';
@@ -161,7 +162,7 @@ export default function OutboundFormModal({
   useEffect(() => {
     if (!streamAllowed) return;
     /*
-     * Wireguard dials its own UDP — only finalmask/sockopt apply, never a
+     * Wireguard dials its own UDP - only finalmask/sockopt apply, never a
      * transport. Don't seed network 'tcp'; clear a leftover one (from a
      * protocol switch) so the transmission/security blocks stay hidden.
      */
@@ -449,9 +450,9 @@ export default function OutboundFormModal({
                         <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
                       </FormField>
 
-                      {/* Freedom's own card owns the strategy — the core migrates this
+                      {/* Freedom's own card owns the strategy - the core migrates this
                           root key into the same sockopt value, so two knobs would race. */}
-                      {protocol !== 'freedom' && (
+                      {protocol !== 'freedom' && protocol !== 'aether' && (
                         <FormField
                           label={t('pages.xray.outbound.targetStrategy')}
                           name="targetStrategy"
@@ -469,6 +470,11 @@ export default function OutboundFormModal({
                       {protocol === 'http' && <HttpFields />}
                       {protocol === 'socks' && <SocksFields />}
                       {protocol === 'masque' && <MasqueFields />}
+                      {protocol === 'aether' && (
+                        <FormField label="Aether URI" name="settings.uri" rules={{ validate: rhfZodValidate(AetherOutboundSettingsSchema.shape.uri) }}>
+                          <Input placeholder="aether://IP:443?protocol=masque&transport=h2" />
+                        </FormField>
+                      )}
 
                       {protocol === 'loopback' && <LoopbackFields />}
                       {protocol === 'blackhole' && <BlackholeFields />}
@@ -650,3 +656,4 @@ export default function OutboundFormModal({
     </>
   );
 }
+

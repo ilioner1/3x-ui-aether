@@ -19,6 +19,8 @@ ARG TARGETVARIANT
 
 RUN apk --no-cache --update add \
   build-base \
+  bash \
+  coreutils \
   gcc \
   curl \
   unzip
@@ -30,6 +32,7 @@ ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
 RUN go build -ldflags "-w -s" -o build/x-ui main.go
 RUN ./DockerInit.sh "$TARGETARCH" "$TARGETVARIANT"
+RUN bash scripts/install-aether.sh build/bin
 
 # ========================================================
 # Stage: Final Image of 3x-ui
@@ -73,3 +76,4 @@ EXPOSE 2053
 VOLUME [ "/etc/x-ui" ]
 CMD [ "./x-ui" ]
 ENTRYPOINT [ "/app/DockerEntrypoint.sh" ]
+

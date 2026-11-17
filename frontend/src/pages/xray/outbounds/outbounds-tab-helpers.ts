@@ -26,6 +26,9 @@ export function originalOutboundIndex(rows: OutboundRow[], positionalIndex: numb
 export function outboundAddresses(o: OutboundRow): string[] {
   const settings = o.settings as Record<string, unknown> | undefined;
   switch (true) {
+    case isOutboundProtocol(o, Protocols.Aether): {
+      try { return [new URL(String(settings?.uri ?? '')).host]; } catch { return []; }
+    }
     case isOutboundProtocol(o, Protocols.VMess): {
       const serverObj = settings?.vnext as Array<{ address: string; port: number }> | undefined;
       return serverObj ? serverObj.map((s) => `${s.address}:${s.port}`) : [];
@@ -70,7 +73,7 @@ export function isUntestable(o: OutboundRow): boolean {
     o.tag === 'blocked'
   )
     return true;
-  // freedom ("direct") and dns aren't proxies — a TCP dial has no endpoint and
+  // freedom ("direct") and dns aren't proxies - a TCP dial has no endpoint and
   // an HTTP probe would only measure the host's own direct reachability, so
   // they're untestable in every mode.
   if (isOutboundProtocol(o, Protocols.Freedom) || isOutboundProtocol(o, Protocols.DNS)) return true;
@@ -128,3 +131,4 @@ export function testResult<K extends string | number>(
 ) {
   return states?.[idx]?.result || null;
 }
+

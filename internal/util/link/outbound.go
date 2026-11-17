@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/maskcompat"
 )
 
@@ -165,7 +166,15 @@ func nestsWithin(v any, depth int) bool {
 
 func parseLinkByScheme(link string) (*ParseResult, error) {
 	switch {
-	case strings.HasPrefix(link, "vmess://"):
+  case strings.HasPrefix(link, "aether://"):
+    c, err := aether.ParseURI(link)
+    if err != nil { return nil, err }
+    u, err := url.Parse(link)
+    if err != nil { return nil, err }
+    identity, err := json.Marshal(c)
+    if err != nil { return nil, err }
+    return &ParseResult{Outbound: Outbound{"protocol":"aether", "tag":u.Fragment, "settings":map[string]any{"uri":link}}, Identity:"aether:"+string(identity)}, nil
+  case strings.HasPrefix(link, "vmess://"):
 		return parseVmess(link)
 	case strings.HasPrefix(link, "vless://"):
 		return parseVless(link)
@@ -448,7 +457,7 @@ func parseShadowsocks(link string) (*ParseResult, error) {
 	//   ss://base64(method:pass)@host:port#remark
 	//   ss://base64(method:pass@host:port)#remark
 	// Query may carry Xray-native stream params (type/security/sni/alpn/fp)
-	// emitted by genShadowsocksLink — preserve them like trojan/vless.
+	// emitted by genShadowsocksLink - preserve them like trojan/vless.
 	remark := ""
 	if i := strings.Index(link, "#"); i >= 0 {
 		remark, _ = url.QueryUnescape(link[i+1:])
@@ -1313,3 +1322,4 @@ func SuggestTag(prefix, remark string, idx int) string {
 	}
 	return base
 }
+

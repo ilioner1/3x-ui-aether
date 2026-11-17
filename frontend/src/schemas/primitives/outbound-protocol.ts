@@ -9,6 +9,7 @@ export function isOutboundProtocol(
 }
 
 export const OutboundProtocols = Object.freeze({
+  Aether: 'aether',
   Freedom: 'freedom',
   Blackhole: 'blackhole',
   DNS: 'dns',
@@ -40,3 +41,4 @@ export const OutboundDomainStrategies = Object.freeze([
 ] as const);
 
 export type OutboundDomainStrategy = (typeof OutboundDomainStrategies)[number];
+
