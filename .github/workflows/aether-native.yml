@@ -20,6 +20,7 @@ jobs:
   package:
     if: github.repository == 'ilioner1/3x-ui-aether'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
@@ -70,18 +71,25 @@ jobs:
           sudo systemctl is-active --quiet x-ui
           test -x /usr/bin/x-ui
           test -x /usr/local/x-ui/bin/aether
-          sudo /usr/bin/x-ui status
+          sudo /usr/bin/x-ui status >/dev/null
+          echo "x-ui menu and systemd status verified"
           sudo systemctl show x-ui -p Environment --value | grep -Fq XUI_AETHER_NATIVE=1
-          sudo bash -c '
+          echo "Aether service environment verified"
+          sudo bash -ec '
             source /etc/x-ui/install-result.env
             test "$XUI_PANEL_PORT" = 20953
+            path="/${XUI_WEB_BASE_PATH#/}"
+            url="http://127.0.0.1:${XUI_PANEL_PORT}${path%/}/"
             for i in {1..15}; do
-              if curl --noproxy "*" --silent --fail --max-time 2 -o /tmp/aether-panel-login "http://127.0.0.1:${XUI_PANEL_PORT}/${XUI_WEB_BASE_PATH#/}"; then
-                grep -qi "<html" /tmp/aether-panel-login
-                exit $?
+              code=$(curl --noproxy "*" --silent --location --max-redirs 5 --max-time 2 -w "%{http_code}" -o /tmp/aether-panel-login "$url") || true
+              if [[ "$code" == 200 ]] && grep -qi "<html" /tmp/aether-panel-login; then
+                echo "Panel login returned HTTP 200"
+                exit 0
               fi
               sleep 1
             done
+            printf "Panel login check failed (HTTP %s)\n" "$code"
+            systemctl is-active x-ui || true
             exit 1
           '
       - uses: actions/upload-artifact@v4
