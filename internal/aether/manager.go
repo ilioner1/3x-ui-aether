@@ -110,7 +110,7 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 }
 
 func socksReady(address string) bool {
-	conn, err := (&net.Dialer{Timeout: 100*time.Millisecond}).DialContext(context.Background(), "tcp", address)
+	conn, err := (&net.Dialer{Timeout: 100 * time.Millisecond}).DialContext(context.Background(), "tcp", address)
 	if err != nil {
 		return false
 	}
