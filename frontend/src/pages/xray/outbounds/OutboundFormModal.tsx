@@ -446,9 +446,9 @@ export default function OutboundFormModal({
                         }}
                       />
 
-                      <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
+                      {protocol !== 'aether' && <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
                         <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
-                      </FormField>
+                      </FormField>}
 
                       {/* Freedom's own card owns the strategy - the core migrates this
                           root key into the same sockopt value, so two knobs would race. */}

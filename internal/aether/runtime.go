@@ -1,6 +1,7 @@
 package aether
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,6 +25,7 @@ func LiveManager() *Manager {
 	liveOnce.Do(func() {
 		root, _ := filepath.Abs(filepath.Join(config.GetDBFolderPath(), "aether"))
 		live = NewManager(root, BinaryPath())
+		go live.Watch(context.Background())
 	})
 	return live
 }

@@ -1004,6 +1004,7 @@ export function formValuesToWirePayload(values: OutboundFormValues): WireOutboun
     settings,
   };
   if (values.tag) result.tag = values.tag;
+  if (values.protocol === 'aether') return result;
   if (values.targetStrategy && values.protocol !== 'freedom') {
     result.targetStrategy = values.targetStrategy;
   }

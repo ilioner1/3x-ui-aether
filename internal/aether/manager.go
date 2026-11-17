@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -14,7 +15,7 @@ import (
 )
 
 type child struct { cmd *exec.Cmd; done chan struct{}; log *os.File }
-type Manager struct { mu sync.Mutex; root string; binary string; children map[string]*child }
+type Manager struct { mu sync.Mutex; root string; binary string; children map[string]*child; desired []Desired }
 
 func NewManager(root, binary string) *Manager {
 	return &Manager{root:root, binary:binary, children:map[string]*child{}}
@@ -24,6 +25,10 @@ func NewManager(root, binary string) *Manager {
 func (m *Manager) Ensure(ctx context.Context, desired []Desired) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.ensureLocked(ctx, desired)
+}
+
+func (m *Manager) ensureLocked(ctx context.Context, desired []Desired) error {
 	var started []string
 	for _, d := range desired {
 		if cur := m.children[d.ID]; cur != nil {
@@ -97,9 +102,26 @@ func stop(c *child) {
 func (m *Manager) Retain(desired []Desired) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.desired = append([]Desired(nil),desired...)
 	wanted := map[string]bool{}
 	for _, d := range desired { wanted[d.ID] = true }
 	for id, cur := range m.children { if !wanted[id] { stop(cur); delete(m.children,id) } }
 }
 
 func (m *Manager) StopAll() { m.Retain(nil) }
+
+func (m *Manager) Watch(ctx context.Context) {
+	ticker := time.NewTicker(5*time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done(): return
+		case <-ticker.C:
+			m.mu.Lock()
+			attempt,cancel := context.WithTimeout(ctx,20*time.Second)
+			if err := m.ensureLocked(attempt,m.desired); err != nil { log.Printf("Aether restart: %v",err) }
+			cancel()
+			m.mu.Unlock()
+		}
+	}
+}
