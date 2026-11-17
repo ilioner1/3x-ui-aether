@@ -23,8 +23,10 @@ func BinaryPath() string {
 	return path
 }
 
-var liveOnce sync.Once
-var live *Manager
+var (
+	liveOnce sync.Once
+	live     *Manager
+)
 
 func LiveManager() *Manager {
 	liveOnce.Do(func() {

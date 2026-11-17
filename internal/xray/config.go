@@ -2,8 +2,9 @@ package xray
 
 import (
 	"bytes"
-	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"reflect"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 )

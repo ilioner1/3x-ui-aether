@@ -63,7 +63,7 @@ func (m *Manager) ensureLocked(ctx context.Context, desired []Desired) error {
 }
 
 func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
-	listener, err := net.Listen("tcp", d.Address())
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", d.Address())
 	if err != nil {
 		return nil, fmt.Errorf("bridge address %s unavailable: %w", d.Address(), err)
 	}
@@ -77,7 +77,7 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 		return nil, err
 	}
 	args := append(d.Config.Args(), "--config", filepath.Join(dir, "identity.toml"))
-	cmd := exec.Command(m.binary, args...)
+	cmd := exec.CommandContext(context.Background(), m.binary, args...)
 	cmd.Dir = dir
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(value), "AETHER_") {
@@ -110,7 +110,7 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 }
 
 func socksReady(address string) bool {
-	conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	conn, err := (&net.Dialer{Timeout: 100*time.Millisecond}).DialContext(context.Background(), "tcp", address)
 	if err != nil {
 		return false
 	}
