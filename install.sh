@@ -1728,13 +1728,13 @@ _install_xui_service_unit() {
 # fails with "Failed to fetch x-ui version"), and falls back to the API.
 resolve_latest_tag() {
     local url tag
-    url=$(curl -sSLI -o /dev/null -w '%{url_effective}' --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://github.com/MHSanaei/3x-ui/releases/latest" 2>/dev/null)
+    url=$(curl -sSLI -o /dev/null -w '%{url_effective}' --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://github.com/ilioner1/3x-ui-aether/releases/latest" 2>/dev/null)
     tag=${url##*/tag/}
     if [[ "$tag" != "$url" && -n "$tag" && "$tag" != "latest" ]]; then
         echo "$tag"
         return 0
     fi
-    curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/MHSanaei/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+    curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/ilioner1/3x-ui-aether/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
 # Releases publish <asset>.sha256 next to each archive. A mismatch or a failed
@@ -1773,7 +1773,7 @@ require_repo_files() {
     shift
     [[ "${ref}" == "main" ]] && return 0
     for name in "$@"; do
-        status=$(curl -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "https://raw.githubusercontent.com/MHSanaei/3x-ui/${ref}/${name}")
+        status=$(curl -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "https://raw.githubusercontent.com/ilioner1/3x-ui-aether/${ref}/${name}")
         if [[ "${status}" != "200" ]]; then
             echo -e "${red}${name} is not available for ${ref} (HTTP ${status})${plain}"
             echo -e "${red}Install a release that ships it, or 'dev' for the rolling build. Your existing installation has not been touched.${plain}"
@@ -1785,81 +1785,33 @@ require_repo_files() {
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    # Download resources
-    if [ $# == 0 ]; then
-        tag_version=$(resolve_latest_tag)
-        if [[ ! -n "$tag_version" ]]; then
-            echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
-            exit 1
-        fi
-        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
-        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
-            exit 1
-        fi
-        if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
-            rm ${xui_folder}-linux-$(arch).tar.gz -f
-            echo -e "${red}Downloaded x-ui release archive is empty${plain}"
-            exit 1
-        fi
-        verify_release_checksum "https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz" "${xui_folder}-linux-$(arch).tar.gz"
+    local tag_version="v3.11.0-aether.1"
+    local script_ref="$tag_version"
+    local archive="x-ui-linux-$(arch).tar.gz"
+    stage=$(mktemp -d) || exit 1
+    trap 'rm -rf -- "$stage"' EXIT
+    local asset="https://github.com/ilioner1/3x-ui-aether/releases/download/$tag_version/$archive"
+
+    if [[ -n "$XUI_AETHER_PACKAGE_DIR" ]]; then
+        cp -- "$XUI_AETHER_PACKAGE_DIR/$archive" "$XUI_AETHER_PACKAGE_DIR/$archive.sha256" "$stage/" || exit 1
     else
-        tag_version=$1
-        # The rolling dev channel ships under a fixed, non-semver tag that is
-        # force-moved to the latest main commit on every push. Accept `dev` as a
-        # convenient alias and skip the numeric floor check for it.
-        if [[ "$tag_version" == "dev" || "$tag_version" == "dev-latest" ]]; then
-            tag_version="dev-latest"
-            echo -e "${yellow}Installing the rolling dev build (tag: dev-latest). This is a per-commit pre-release, not a stable version.${plain}"
-        else
-            tag_version_numeric=${tag_version#v}
-            min_version="2.3.5"
-
-            if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
-                echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
-                exit 1
-            fi
-        fi
-
-        url="https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
-        echo -e "Beginning to install x-ui ${tag_version}"
-        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${url}
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}Download x-ui ${tag_version} failed, please check if the version exists ${plain}"
-            exit 1
-        fi
-        if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
-            rm ${xui_folder}-linux-$(arch).tar.gz -f
-            echo -e "${red}Downloaded x-ui release archive is empty${plain}"
-            exit 1
-        fi
-        verify_release_checksum "${url}" "${xui_folder}-linux-$(arch).tar.gz"
+        curl --fail --silent --show-error --location --retry 3 -o "$stage/$archive" "$asset" || exit 1
+        curl --fail --silent --show-error --location --retry 3 -o "$stage/$archive.sha256" "$asset.sha256" || exit 1
     fi
-    # x-ui.sh, x-ui.rc and the unit files must come from the same release as
-    # the binary; only the rolling dev build tracks main.
-    local script_ref="${tag_version}"
-    if [[ "${tag_version}" == "dev-latest" ]]; then
-        script_ref="main"
-    fi
-    # The unit files are only fetched when the release tarball lacks them, so
-    # they are checked at that point instead of here.
-    local required_files=("x-ui.sh")
-    [[ $release == "alpine" ]] && required_files+=("x-ui.rc")
-    require_repo_files "${script_ref}" "${required_files[@]}"
-    local xui_script_temp="/usr/bin/x-ui-temp.$$"
-    rm -f "${xui_script_temp}"
-    curl -fLRo "${xui_script_temp}" "https://raw.githubusercontent.com/MHSanaei/3x-ui/${script_ref}/x-ui.sh"
-    if [[ $? -ne 0 ]]; then
-        rm -f "${xui_script_temp}"
-        echo -e "${red}Failed to download x-ui.sh${plain}"
+
+    local checksum
+    checksum=$(awk 'NR == 1 {print $1}' "$stage/$archive.sha256")
+    if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]] ||
+        ! printf '%s  %s\n' "$checksum" "$stage/$archive" | sha256sum --check --status; then
+        echo "Aether package checksum verification failed." >&2
         exit 1
     fi
-    if [[ ! -s "${xui_script_temp}" ]]; then
-        rm -f "${xui_script_temp}"
-        echo -e "${red}Downloaded x-ui.sh is empty${plain}"
-        exit 1
-    fi
+
+    local xui_script_temp="$stage/x-ui-menu"
+    tar -xOf "$stage/$archive" x-ui/x-ui.sh >"$xui_script_temp" &&
+        [[ -s "$xui_script_temp" ]] &&
+        tar -tzf "$stage/$archive" x-ui/bin/aether "x-ui/bin/xray-linux-$(arch)" x-ui/x-ui x-ui/x-ui.service.debian >/dev/null ||
+        { echo "Aether package is incomplete." >&2; exit 1; }
 
     # Stop x-ui service and remove old resources
     local custom_bin_backup=""
@@ -1904,14 +1856,12 @@ install_x-ui() {
     fi
 
     # Extract resources and set permissions
-    tar zxvf x-ui-linux-$(arch).tar.gz
+    tar -xzf "$stage/$archive"
     if [[ $? -ne 0 ]]; then
-        rm x-ui-linux-$(arch).tar.gz -f
-        rm -f "${xui_script_temp}"
+            rm -f "${xui_script_temp}"
         echo -e "${red}Failed to extract the x-ui release archive -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the installer again${plain}"
         exit 1
     fi
-    rm x-ui-linux-$(arch).tar.gz -f
 
     cd x-ui
     if [[ $? -ne 0 || ! -s x-ui ]]; then
@@ -1985,7 +1935,7 @@ install_x-ui() {
     fi
     chmod +x /usr/bin/x-ui
     mkdir -p /var/log/x-ui
-    config_after_install
+    config_after_install || exit 1
 
     # Etckeeper compatibility
     if [ -d "/etc/.git" ]; then
@@ -2004,7 +1954,7 @@ install_x-ui() {
     if [[ $release == "alpine" ]]; then
         xui_rc_temp="/etc/init.d/x-ui.tmp.$$"
         rm -f "${xui_rc_temp}"
-        curl -fLRo "${xui_rc_temp}" "https://raw.githubusercontent.com/MHSanaei/3x-ui/${script_ref}/x-ui.rc"
+        curl -fLRo "${xui_rc_temp}" "https://raw.githubusercontent.com/ilioner1/3x-ui-aether/${script_ref}/x-ui.rc"
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}"
             echo -e "${red}Failed to download x-ui.rc${plain}"
@@ -2069,13 +2019,13 @@ install_x-ui() {
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
                 ubuntu | debian | armbian)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/${script_ref}/x-ui.service.debian"
+                    service_unit_url="https://raw.githubusercontent.com/ilioner1/3x-ui-aether/${script_ref}/x-ui.service.debian"
                     ;;
                 arch | manjaro | parch)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/${script_ref}/x-ui.service.arch"
+                    service_unit_url="https://raw.githubusercontent.com/ilioner1/3x-ui-aether/${script_ref}/x-ui.service.arch"
                     ;;
                 *)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/${script_ref}/x-ui.service.rhel"
+                    service_unit_url="https://raw.githubusercontent.com/ilioner1/3x-ui-aether/${script_ref}/x-ui.service.rhel"
                     ;;
             esac
 
@@ -2091,8 +2041,9 @@ install_x-ui() {
             chown root:root ${xui_service}/x-ui.service > /dev/null 2>&1
             chmod 644 ${xui_service}/x-ui.service > /dev/null 2>&1
             systemctl daemon-reload
-            systemctl enable x-ui
-            systemctl start x-ui
+            systemctl enable x-ui || exit 1
+            systemctl start x-ui || exit 1
+            systemctl is-active --quiet x-ui || exit 1
         else
             echo -e "${red}Failed to install x-ui.service file${plain}"
             exit 1
@@ -2125,6 +2076,27 @@ install_x-ui() {
 └───────────────────────────────────────────────────────┘"
 }
 
+case "$release" in
+    ubuntu|debian|armbian) ;;
+    *) echo "3x-ui Aether native install supports Ubuntu, Debian and Armbian." >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+    x86_64|aarch64|arm64) ;;
+    *) echo "3x-ui Aether native install supports amd64 and arm64." >&2; exit 1 ;;
+esac
+if [[ "$xui_folder" != /usr/local/x-ui || "$xui_service" != /etc/systemd/system ]]; then
+    echo "3x-ui Aether native install uses the standard x-ui paths." >&2
+    exit 1
+fi
+if [[ -e "$xui_folder" || -e /usr/bin/x-ui || -e /etc/systemd/system/x-ui.service || -e /etc/x-ui/x-ui.db ]]; then
+    echo "Existing x-ui installation or database found. Back up your data before migration." >&2
+    exit 1
+fi
+if ! command -v systemctl >/dev/null || [[ ! -d /run/systemd/system ]]; then
+    echo "A running systemd instance is required." >&2
+    exit 1
+fi
+
 echo -e "${green}Running...${plain}"
-install_base
-install_x-ui $1
+install_base || exit 1
+install_x-ui

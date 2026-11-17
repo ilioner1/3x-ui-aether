@@ -7,6 +7,18 @@
 aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2
 ```
 
+## نصب مستقیم مثل سنایی
+
+روی Ubuntu، Debian یا Armbian با systemd و پردازندهٔ amd64 یا arm64، در SSH و با دسترسی root اجرا کنید:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.1/install.sh)
+```
+
+نصب‌کننده بستهٔ آمادهٔ پنل، Xray و Aether را از همین مخزن می‌گیرد و منوی `x-ui` و سرویس `x-ui.service` را راه می‌اندازد. نصب به Docker، Go یا Node.js نیاز ندارد. برای دیدن منو `x-ui` و برای دیدن آدرس و تنظیمات پنل `x-ui settings` را اجرا کنید.
+
+این مسیر برای نصب تازه است. اگر نصب یا پایگاه‌دادهٔ سنایی از قبل روی سرور وجود داشته باشد، نصب‌کننده متوقف می‌شود تا بتوانید قبل از مهاجرت از داده‌ها نسخهٔ پشتیبان بگیرید. به‌روزرسانی پنل از مخزن اصلی سنایی برای این نصب غیرفعال است.
+
 ## نصب مستقل با Docker
 
 ```bash

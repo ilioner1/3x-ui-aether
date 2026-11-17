@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -216,6 +217,10 @@ func (a *ServerController) installXray(c *gin.Context) {
 // updater) overrides it for this run. The response's runId identifies this
 // update for a later getUpdateStatus poll.
 func (a *ServerController) updatePanel(c *gin.Context) {
+	if os.Getenv("XUI_AETHER_NATIVE") == "1" {
+		jsonMsg(c, "Panel update unavailable", errors.New("use the 3x-ui Aether release for updates"))
+		return
+	}
 	devParam := c.PostForm("dev")
 	var runID int64
 	var err error
