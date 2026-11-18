@@ -1,0 +1,180 @@
+"""Exercise the installed panel, exported VLESS link, and live Aether route."""
+
+import json
+import os
+import pathlib
+import socket
+import subprocess
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+
+AETHER_URI = (
+    "aether://162.159.198.223:443"
+    "?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2"
+)
+TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
+XRAY_BIN = pathlib.Path("/usr/local/x-ui/bin")
+BASE = (
+    f"http://127.0.0.1:{os.environ['XUI_PANEL_PORT']}/"
+    f"{os.environ['XUI_WEB_BASE_PATH'].strip('/')}/panel/api"
+).replace("//panel/api", "/panel/api")
+HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def api(path, method="POST", body=None, *, form=False):
+    headers = {"Authorization": "Bearer " + os.environ["XUI_API_TOKEN"]}
+    data = None
+    if body is not None and form:
+        data = urllib.parse.urlencode(body).encode()
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    elif body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(BASE + path, data, headers, method=method)
+    try:
+        with HTTP.open(request, timeout=40) as response:
+            message = json.load(response)
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"{method} {path}: HTTP {error.code}") from None
+    if not message["success"]:
+        raise RuntimeError(f"{method} {path}: {message.get('msg')}")
+    return message.get("obj")
+
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def exported_links(value):
+    if isinstance(value, str) and value.startswith("vless://"):
+        yield urllib.parse.urlsplit(value)
+    elif isinstance(value, list):
+        for item in value:
+            yield from exported_links(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from exported_links(item)
+
+
+def start_client(link, directory):
+    proxy_port = free_port()
+    options = urllib.parse.parse_qs(link.query)
+    network = options.get("type", ["tcp"])[0]
+    security = options.get("security", ["none"])[0]
+    if network not in {"raw", "tcp"} or security != "none":
+        raise RuntimeError("Unexpected transport in the exported VLESS link")
+    config = {
+        "inbounds": [
+            {"listen": "127.0.0.1", "port": proxy_port, "protocol": "socks"}
+        ],
+        "outbounds": [{
+            "protocol": "vless",
+            "settings": {"vnext": [{
+                "address": link.hostname,
+                "port": link.port,
+                "users": [{"id": link.username, "encryption": "none"}],
+            }]},
+            "streamSettings": {"network": network, "security": security},
+        }],
+    }
+    config_path = directory / "client.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    return proxy_port, subprocess.Popen([
+        str(XRAY_BIN / "xray-linux-amd64"), "run", "-config", str(config_path)
+    ])
+
+
+def verify_route(tag, inbound_tag):
+    config = json.loads((XRAY_BIN / "config.json").read_text(encoding="utf-8"))
+    outbound = next(entry for entry in config["outbounds"] if entry["tag"] == tag)
+    if outbound["protocol"] != "socks":
+        raise RuntimeError("The installed Xray config did not activate the Aether bridge")
+    if not any(
+        rule.get("outboundTag") == tag and inbound_tag in rule.get("inboundTag", [])
+        for rule in config["routing"]["rules"]
+    ):
+        raise RuntimeError("The installed Xray config did not route the VLESS inbound")
+
+
+def main():
+    inbound_port = free_port()
+    client_id = str(uuid.uuid4())
+    tag = urllib.parse.urlsplit(AETHER_URI).fragment
+    inbound = api("/inbounds/add", body={
+        "remark": "Aether client smoke test",
+        "enable": True,
+        "listen": "127.0.0.1",
+        "port": inbound_port,
+        "protocol": "vless",
+        "settings": json.dumps({
+            "decryption": "none",
+            "clients": [{"id": client_id, "email": "aether-smoke", "enable": True}],
+        }),
+        "streamSettings": json.dumps({"network": "tcp", "security": "none"}),
+        "sniffing": "{}",
+    })
+    inbound_tag = inbound["tag"]
+    print(f"Panel created VLESS inbound {inbound_tag}", flush=True)
+
+    links = api("/inbounds/allLinks", "GET")
+    link = next(
+        (link for link in exported_links(links) if link.username == client_id), None
+    )
+    if link is None or link.hostname != "127.0.0.1" or link.port != inbound_port:
+        raise RuntimeError("The panel did not export the expected VLESS client link")
+    print("The panel exported a VLESS link for the new client", flush=True)
+
+    config = api("/xray/")["xraySetting"]
+    if isinstance(config, str):
+        config = json.loads(config)
+    config["outbounds"].append({
+        "protocol": "aether", "tag": tag, "settings": {"uri": AETHER_URI},
+    })
+    config.setdefault("routing", {}).setdefault("rules", []).insert(0, {
+        "type": "field", "inboundTag": [inbound_tag], "outboundTag": tag,
+    })
+    api("/xray/update", body={
+        "xraySetting": json.dumps(config), "outboundTestUrl": TRACE_URL,
+    }, form=True)
+    api("/server/restartXrayService")
+    verify_route(tag, inbound_tag)
+    print("The running Xray configuration routes the inbound to Aether", flush=True)
+
+    with tempfile.TemporaryDirectory() as scratch:
+        port, client = start_client(link, pathlib.Path(scratch))
+        try:
+            for _ in range(10):
+                if client.poll() is not None:
+                    raise RuntimeError("The VLESS client process exited")
+                result = subprocess.run([
+                    "curl", "--silent", "--show-error", "--fail", "--max-time", "12",
+                    "--noproxy", "", "--proxy", f"socks5h://127.0.0.1:{port}",
+                    "--write-out", "\n%{http_code} %{time_total}", TRACE_URL,
+                ], capture_output=True, text=True, check=False)
+                if result.returncode == 0:
+                    body, metrics = result.stdout.rsplit("\n", 1)
+                    status, seconds = metrics.split()
+                    trace = dict(line.split("=", 1) for line in body.splitlines() if "=" in line)
+                    warp = trace.get("warp")
+                    if status == "200" and warp in {"on", "plus"}:
+                        print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}")
+                        return
+                    print(f"Unexpected tunnel response: HTTP {status}, WARP {warp}", flush=True)
+                else:
+                    print(result.stderr.strip(), flush=True)
+                time.sleep(2)
+            raise RuntimeError("No successful WARP response through the exported VLESS link")
+        finally:
+            client.terminate()
+            client.wait(timeout=10)
+
+
+if __name__ == "__main__":
+    main()
