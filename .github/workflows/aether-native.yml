@@ -58,6 +58,7 @@ jobs:
       - name: Package the panel, Xray and Aether
         env:
           ARCH: ${{ matrix.arch }}
+          MTG_MULTI_VER: v1.16.1
         run: |
           bash DockerInit.sh "$ARCH"
           bash scripts/install-aether.sh build/bin
