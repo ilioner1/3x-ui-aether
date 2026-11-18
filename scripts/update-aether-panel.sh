@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Update the panel and its Psiphon companion on an existing native Aether installation.
 set -euo pipefail
-release=v3.11.0-aether.6
+release=v3.11.0-aether.7
 panel=/usr/local/x-ui/x-ui
 psiphon=/usr/local/x-ui/bin/pt/psiphon-tunnel-core
 notices=/usr/local/x-ui/bin/aether-licenses
