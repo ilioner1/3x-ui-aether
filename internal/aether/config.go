@@ -47,10 +47,13 @@ func ParseURI(raw string) (Config, error) {
 		return c, fmt.Errorf("aether: invalid query: %w", err)
 	}
 	choices := map[string][]string{
-		"protocol": {"masque"}, "scan": {"turbo", "balanced", "thorough", "stealth", "ironclad"},
-		"ip": {"v4", "v6", "both"}, "transport": {"h2", "h3"},
-		"noize": {"off", "light", "firewall", "balanced", "gfw", "aggressive"},
-		"psiphon": {"chain"}, "psiphon_mode": {"auto", "cdn", "direct"},
+		"protocol":     {"masque"},
+		"scan":         {"turbo", "balanced", "thorough", "stealth", "ironclad"},
+		"ip":           {"v4", "v6", "both"},
+		"transport":    {"h2", "h3"},
+		"noize":        {"off", "light", "firewall", "balanced", "gfw", "aggressive"},
+		"psiphon":      {"chain"},
+		"psiphon_mode": {"auto", "cdn", "direct"},
 	}
 	for key, values := range q {
 		if key == "region" && len(values) == 1 {

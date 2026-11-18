@@ -38,7 +38,7 @@ func (m *Manager) Render(raw []byte, namespace string, reserved map[int]bool) ([
 
 	free := func(port int) bool {
 		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-		listener, err := net.Listen("tcp", address)
+		listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", address)
 		if err != nil {
 			return false
 		}
@@ -209,7 +209,7 @@ func (m *Manager) start(ctx context.Context, d Desired, ready func(string) bool)
 }
 
 func tcpListenerReady(address string) bool {
-	conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	conn, err := (&net.Dialer{Timeout: 100 * time.Millisecond}).DialContext(context.Background(), "tcp", address)
 	if err != nil {
 		return false
 	}

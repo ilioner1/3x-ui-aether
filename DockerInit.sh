@@ -45,7 +45,7 @@ case $PLATFORM in
         MTG_BIN="mtg-linux-${PLATFORM}"
         ;;
 esac
-if [[ -z "${MTG_MULTI_VER:-}" ]]; then
+if [ -z "${MTG_MULTI_VER:-}" ]; then
     MTG_MULTI_VER=$(curl -sfL "https://api.github.com/repos/mhsanaei/mtg-multi/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
 fi
 if [ -z "$MTG_MULTI_VER" ]; then
