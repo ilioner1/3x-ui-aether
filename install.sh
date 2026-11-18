@@ -1785,7 +1785,7 @@ require_repo_files() {
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    local tag_version="v3.11.0-aether.4"
+    local tag_version="v3.11.0-aether.5"
     local script_ref="$tag_version"
     local archive="x-ui-linux-$(arch).tar.gz"
     stage=$(mktemp -d) || exit 1

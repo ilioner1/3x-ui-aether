@@ -20,7 +20,7 @@ aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&p
 روی Ubuntu، Debian یا Armbian با systemd و پردازندهٔ amd64 یا arm64، در SSH و با دسترسی root اجرا کنید:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.4/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.5/install.sh)
 ```
 
 نصب‌کننده بستهٔ آمادهٔ پنل، Xray و Aether را از همین مخزن می‌گیرد و منوی `x-ui` و سرویس `x-ui.service` را راه می‌اندازد. نصب به Docker، Go یا Node.js نیاز ندارد. برای دیدن منو `x-ui` و برای دیدن آدرس و تنظیمات پنل `x-ui settings` را اجرا کنید.
@@ -32,7 +32,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.
 روی نصب مستقیم قبلی Aether، با دسترسی root این دستور را اجرا کنید. پنل برای به‌روزرسانی پنل و نصب Psiphon کوتاه‌مدت راه‌اندازی مجدد می‌شود و پایگاه‌داده، تنظیمات و هسته‌ها حفظ می‌شوند.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.4/scripts/update-aether-panel.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.5/scripts/update-aether-panel.sh)
 ```
 
 ## ساخت کانفیگ VLESS با خروجی Aether
@@ -57,7 +57,7 @@ bash scripts/install-aether.sh bin
 وقتی IP و پورت در لینک مشخص‌اند، `--peer` به هسته داده می‌شود و اسکن اولیه لازم نیست.
 
 هر اوتباند یک پردازش و پورت SOCKS5 روی loopback دارد. توقف پنل، حذف اوتباند و پایان تست، پردازش مربوط را می‌بندد.
-در برخورد نادر پورت تولیدشده با سرویس دیگر، خطا اعلام می‌شود؛ تغییر تگ اوتباند، پورت دیگری تولید می‌کند.
+اگر پورت پیشنهادی اشغال باشد، پنل یک پورت آزاد برای اوتباند جدید انتخاب می‌کند.
 اتصال این IP روی شبکه یا کشور دیگر باید جداگانه تست شود. اتصال روی یک runner تضمین اتصال روی سرور شما نیست.
 
 کد پنل تحت GPL-3.0 و هستهٔ مجزای Aether تحت AGPL-3.0-only است.

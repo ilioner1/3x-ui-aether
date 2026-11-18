@@ -502,7 +502,11 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	if excludedClients > 0 {
 		logger.Infof("Xray config generated: excluded %d disabled client entries across %d inbounds", excludedClients, excludedInbounds)
 	}
-	bridged, desired, bridgeErr := aether.Transform(xrayConfig.OutboundConfigs, "live")
+	reservedBridgePorts := make(map[int]bool, len(xrayConfig.InboundConfigs))
+	for _, inbound := range xrayConfig.InboundConfigs {
+		reservedBridgePorts[inbound.Port] = true
+	}
+	bridged, desired, bridgeErr := aether.LiveManager().Render(xrayConfig.OutboundConfigs, "live", reservedBridgePorts)
 	if bridgeErr != nil {
 		return nil, bridgeErr
 	}

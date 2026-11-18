@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,38 @@ type Manager struct {
 
 func NewManager(root, binary string) *Manager {
 	return &Manager{root: root, binary: binary, children: map[string]*child{}}
+}
+
+// Render preserves live bridge ports while choosing free ports for new tunnels.
+func (m *Manager) Render(raw []byte, namespace string, reserved map[int]bool) ([]byte, []Desired, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	free := func(port int) bool {
+		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			return false
+		}
+		_ = listener.Close()
+		return true
+	}
+	retained := make(map[string]int, len(m.desired))
+	for _, d := range m.desired {
+		if cur := m.children[d.ID]; cur != nil {
+			select {
+			case <-cur.done:
+			default:
+				retained[d.ID] = d.Port
+				continue
+			}
+		}
+		// Keep a temporarily disconnected tunnel on the port Xray already uses.
+		if !reserved[d.Port] && free(d.Port) {
+			retained[d.ID] = d.Port
+		}
+	}
+	return transform(raw, namespace, retained, reserved, free)
 }
 
 // Ensure waits for SOCKS readiness when the caller needs to probe the actual tunnel.

@@ -2,6 +2,7 @@ package aether
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -68,5 +69,63 @@ func TestPsiphonChainURI(t *testing.T) {
 		if _, err := ParseURI("aether://162.159.199.111:1701?" + query); err == nil {
 			t.Errorf("accepted invalid options %q", query)
 		}
+	}
+}
+
+func TestBridgePortCollisionKeepsExistingTunnel(t *testing.T) {
+	makeOutbound := func(tag string) string {
+		return fmt.Sprintf(`{"protocol":"aether","tag":%q,"settings":{"uri":%q}}`, tag, sampleURI)
+	}
+	seen := make(map[int]string)
+	for i := range 1000 {
+		tag := fmt.Sprintf("aether-%d", i)
+		entry := makeOutbound(tag)
+		_, single, err := Transform([]byte("["+entry+"]"), "live")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := single[0].Port
+		first, collision := seen[port]
+		if !collision {
+			seen[port] = entry
+			continue
+		}
+		_, original, err := Transform([]byte("["+first+"]"), "live")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw := []byte("[" + entry + "," + first + "]")
+		_, assigned, err := transform(raw, "live", map[string]int{original[0].ID: port}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if assigned[1].Port != port || assigned[0].Port == port {
+			t.Fatalf("new bridge took an active port: %+v", assigned)
+		}
+		_, distinct, err := Transform(raw, "live")
+		if err != nil || distinct[0].Port == distinct[1].Port {
+			t.Fatalf("colliding ports were not separated: %+v, %v", distinct, err)
+		}
+		return
+	}
+	t.Fatal("test fixture did not produce a port collision")
+}
+
+func TestBridgePortAllocationSkipsOccupiedAndReservedPorts(t *testing.T) {
+	raw := []byte(`[{"protocol":"aether","tag":"test","settings":{"uri":"` + sampleURI + `"}}]`)
+	_, original, err := Transform(raw, "live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := original[0].Port
+	next := firstBridgePort + (port-firstBridgePort+1)%bridgePortCount
+	_, assigned, err := transform(raw, "live", nil, map[int]bool{next: true}, func(p int) bool {
+		return p != port
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assigned[0].Port == port || assigned[0].Port == next {
+		t.Fatalf("selected occupied or reserved port: %+v", assigned)
 	}
 }

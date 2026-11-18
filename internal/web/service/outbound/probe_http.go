@@ -291,12 +291,16 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 		return false, err
 	}
 	defer os.RemoveAll(probeRoot)
-	bridged, desired, err := aether.Transform(cfg.OutboundConfigs, probeRoot)
+	manager := aether.NewManager(probeRoot, aether.BinaryPath())
+	reservedBridgePorts := make(map[int]bool, len(ports))
+	for _, port := range ports {
+		reservedBridgePorts[port] = true
+	}
+	bridged, desired, err := manager.Render(cfg.OutboundConfigs, probeRoot, reservedBridgePorts)
 	if err != nil {
 		return false, err
 	}
 	cfg.OutboundConfigs = json_util.RawMessage(bridged)
-	manager := aether.NewManager(probeRoot, aether.BinaryPath())
 	defer manager.StopAll()
 	ctx, cancel := context.WithTimeout(context.Background(), aether.StartupTimeout(desired, 90*time.Second))
 	defer cancel()

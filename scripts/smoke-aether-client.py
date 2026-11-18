@@ -155,19 +155,19 @@ def main():
     if isinstance(config, str):
         config = json.loads(config)
     if TEST_MULTIPLE:
-        # Four deliberately unresponsive Psiphon exits before the working
-        # fifth outbound and another after it. A pending exit must not stall
+        # Eighteen deliberately unresponsive exits before the working
+        # nineteenth outbound and a Psiphon exit after it. A pending exit must not stall
         # Save or make Xray dispatch through its direct default.
         unavailable_uri = (
             "aether://192.0.2.44:443?protocol=masque&transport=h2"
-            "&psiphon=chain&psiphon_mode=auto"
         )
-        for index in range(1, 7):
-            if index != 5:
+        for index in range(1, 21):
+            if index != 19:
                 filler_tag = f"aether-pending-{index}"
+                chain = "&psiphon=chain&psiphon_mode=auto" if index == 20 else ""
                 config["outbounds"].append({
                     "protocol": "aether", "tag": filler_tag,
-                    "settings": {"uri": f"{unavailable_uri}#{filler_tag}"},
+                    "settings": {"uri": f"{unavailable_uri}{chain}#{filler_tag}"},
                 })
     expected_outbound = {"protocol": "aether", "tag": tag, "settings": {"uri": AETHER_URI}}
     if os.environ.get("XUI_AETHER_REQUIRE_IMPORTED") == "1":
@@ -221,12 +221,12 @@ def main():
                     if status == "200" and verified:
                         print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}, region {location}")
                         if TEST_MULTIPLE:
-                            rule["outboundTag"] = "aether-pending-6"
+                            rule["outboundTag"] = "aether-pending-20"
                             save_config()
-                            verify_route("aether-pending-6", inbound_tag)
+                            verify_route("aether-pending-20", inbound_tag)
                             if request_trace(5).returncode == 0:
-                                raise RuntimeError("Unavailable sixth Aether outbound returned traffic")
-                            print("Sixth outbound failed closed instead of using the VPS exit")
+                                raise RuntimeError("Unavailable twentieth Aether outbound returned traffic")
+                            print("Twentieth outbound failed closed instead of using the VPS exit")
                         return
                     print(f"Unexpected tunnel response: HTTP {status}, WARP {warp}, region {location}", flush=True)
                 else:

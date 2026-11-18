@@ -141,8 +141,17 @@ func ParseOutbound(raw []byte) (string, Config, error) {
 	return o.Tag, c, err
 }
 
-// Transform only renders config; it never starts a tunnel while previewing or validating.
+const (
+	firstBridgePort = 20000
+	bridgePortCount = 40000
+)
+
+// Transform renders bridge configuration without consulting the running panel.
 func Transform(raw []byte, namespace string) ([]byte, []Desired, error) {
+	return transform(raw, namespace, nil, nil, nil)
+}
+
+func transform(raw []byte, namespace string, retained map[string]int, reserved map[int]bool, available func(int) bool) ([]byte, []Desired, error) {
 	if len(raw) == 0 {
 		return raw, nil, nil
 	}
@@ -151,7 +160,13 @@ func Transform(raw []byte, namespace string) ([]byte, []Desired, error) {
 		return nil, nil, err
 	}
 	var desired []Desired
-	ports := map[int]string{}
+	ports := make(map[int]bool, len(retained)+len(reserved))
+	for port := range reserved {
+		ports[port] = true
+	}
+	for _, port := range retained {
+		ports[port] = true
+	}
 	tags := map[string]bool{}
 	for i, entry := range entries {
 		if !IsOutbound(entry) {
@@ -171,11 +186,21 @@ func Transform(raw []byte, namespace string) ([]byte, []Desired, error) {
 		}{tag, c})
 		sum := sha256.Sum256(append([]byte(namespace+"\x00"), fingerprint...))
 		id := hex.EncodeToString(sum[:])
-		port := 20000 + int(binary.BigEndian.Uint32(sum[:4])%40000)
-		if other, taken := ports[port]; taken {
-			return nil, nil, fmt.Errorf("aether: bridge port collision for %q and %q; change one tag", other, tag)
+		port := retained[id]
+		if port == 0 {
+			offset := int(binary.BigEndian.Uint32(sum[:4]) % bridgePortCount)
+			for i := range bridgePortCount {
+				candidate := firstBridgePort + (offset+i)%bridgePortCount
+				if !ports[candidate] && (available == nil || available(candidate)) {
+					port = candidate
+					break
+				}
+			}
+			if port == 0 {
+				return nil, nil, fmt.Errorf("aether: no free loopback bridge port for %q", tag)
+			}
+			ports[port] = true
 		}
-		ports[port] = tag
 		desired = append(desired, Desired{ID: id, Tag: tag, Port: port, Config: c})
 		entries[i], err = json.Marshal(map[string]any{"tag": tag, "protocol": "socks", "settings": map[string]any{"servers": []any{map[string]any{"address": "127.0.0.1", "port": port}}}})
 		if err != nil {

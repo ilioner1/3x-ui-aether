@@ -17,7 +17,7 @@ concurrency:
   group: aether-native-release
   cancel-in-progress: true
 env:
-  RELEASE_TAG: v3.11.0-aether.4
+  RELEASE_TAG: v3.11.0-aether.5
 jobs:
   package:
     if: github.repository == 'ilioner1/3x-ui-aether'
@@ -73,7 +73,7 @@ jobs:
           package_dir="$PWD/packages"
           if [[ "${{ matrix.arch }}" == amd64 ]]; then
             installer="$RUNNER_TEMP/install-aether-previous.sh"
-            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.3/install.sh -o "$installer"
+            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.4/install.sh -o "$installer"
             package_dir=""
           fi
           if ! sudo env XUI_AETHER_PACKAGE_DIR="$package_dir" XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1; then
@@ -137,10 +137,10 @@ jobs:
             sudo find /etc/x-ui/aether -name core.log -exec grep -hE 'psiphon is asked|psiphon is ready|psiphon starts|starting psiphon|can leave from|tunnel timed out|connection refused|could not connect|all attempts failed' {} + || true
             exit 1
           fi
-      - name: Save six Aether outbounds and verify routing without direct fallback
+      - name: Save twenty Aether outbounds and verify routing without direct fallback
         if: matrix.arch == 'amd64'
         env:
-          XUI_AETHER_TEST_URI: "aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#aether-fifth"
+          XUI_AETHER_TEST_URI: "aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#aether-nineteenth"
         run: |
           sudo --preserve-env=XUI_AETHER_TEST_URI bash -ec '
             source /etc/x-ui/install-result.env
