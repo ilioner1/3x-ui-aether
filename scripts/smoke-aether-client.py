@@ -129,7 +129,7 @@ def main():
         "protocol": "vless",
         "settings": json.dumps({
             "decryption": "none",
-            "clients": [{"id": client_id, "email": "aether-smoke", "enable": True}],
+            "clients": [{"id": client_id, "email": f"aether-smoke-{client_id}", "enable": True}],
         }),
         "streamSettings": json.dumps({"network": "tcp", "security": "none"}),
         "sniffing": "{}",
