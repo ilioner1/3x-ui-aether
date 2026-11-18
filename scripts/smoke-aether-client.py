@@ -220,13 +220,6 @@ def main():
                     verified = location == REQUESTED_REGION if REQUESTED_REGION else warp in {"on", "plus"}
                     if status == "200" and verified:
                         print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}, region {location}")
-                        if os.environ.get("XUI_AETHER_CHECK_LIVE_PROBE") == "1":
-                            tested = api("/xray/testOutbounds", body={
-                                "outbounds": json.dumps([expected_outbound]), "mode": "real",
-                            }, form=True)
-                            if not tested[0]["success"]:
-                                raise RuntimeError(f"Live Aether probe failed: {tested[0]}")
-                            print("Panel batch probe succeeded against the installed live Aether outbound", flush=True)
                         if TEST_MULTIPLE:
                             rule["outboundTag"] = "aether-pending-20"
                             save_config()

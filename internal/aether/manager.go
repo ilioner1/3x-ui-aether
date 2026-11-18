@@ -63,27 +63,6 @@ func (m *Manager) Render(raw []byte, namespace string, reserved map[int]bool) ([
 	return transform(raw, namespace, retained, reserved, free)
 }
 
-// ProbePort finds the bridge for the exact applied outbound. A zero port
-// with applied=true means it is down and should not be probed via a new tunnel.
-func (m *Manager) ProbePort(tag string, cfg Config) (port int, applied bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, d := range m.desired {
-		if d.Tag != tag || d.Config != cfg {
-			continue
-		}
-		if cur := m.children[d.ID]; cur != nil {
-			select {
-			case <-cur.done:
-			default:
-				return d.Port, true
-			}
-		}
-		return 0, true
-	}
-	return 0, false
-}
-
 // Ensure waits for SOCKS readiness when the caller needs to probe the actual tunnel.
 func (m *Manager) Ensure(ctx context.Context, desired []Desired) error {
 	m.mu.Lock()
@@ -124,7 +103,6 @@ func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready fun
 		if cur := m.children[d.ID]; cur != nil {
 			select {
 			case <-cur.done:
-				log.Printf("Aether outbound %q exited (%s); restarting; logs in %s", d.Tag, cur.cmd.ProcessState, filepath.Join(m.root, d.ID))
 				delete(m.children, d.ID)
 			default:
 				continue
@@ -179,11 +157,7 @@ func (m *Manager) start(ctx context.Context, d Desired, ready func(string) bool)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	logPath := filepath.Join(dir, "core.log")
-	if err := os.Rename(logPath, filepath.Join(dir, "core.previous.log")); err != nil && !os.IsNotExist(err) {
-		log.Printf("Aether outbound %q could not preserve the previous log: %v", d.Tag, err)
-	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	logFile, err := os.OpenFile(filepath.Join(dir, "core.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}

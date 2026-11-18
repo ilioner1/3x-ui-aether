@@ -159,8 +159,6 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 	}
 	var tcpLane []tcpEntry
 	var httpItems []*httpBatchItem
-	var liveItems []*httpBatchItem
-	var livePorts []int
 	seenTags := make(map[string]bool)
 
 	for i, ob := range items {
@@ -198,29 +196,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 			r.Error = fmt.Sprintf("Duplicate outbound tag in batch: %s", tag)
 		default:
 			seenTags[tag] = true
-			item := &httpBatchItem{index: i, tag: tag, outbound: ob, result: r}
-			if protocol == "aether" {
-				raw, err := json.Marshal(ob)
-				if err != nil {
-					r.Error = err.Error()
-					continue
-				}
-				tag, cfg, err := aether.ParseOutbound(raw)
-				if err != nil {
-					r.Error = err.Error()
-					continue
-				}
-				if port, applied := aether.LiveManager().ProbePort(tag, cfg); applied {
-					if port == 0 {
-						r.Error = "The running Aether outbound is unavailable and will be retried"
-						continue
-					}
-					liveItems = append(liveItems, item)
-					livePorts = append(livePorts, port)
-					continue
-				}
-			}
-			httpItems = append(httpItems, item)
+			httpItems = append(httpItems, &httpBatchItem{index: i, tag: tag, outbound: ob, result: r})
 		}
 	}
 
@@ -246,11 +222,6 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		wg.Wait()
 	}
 
-	if testURL == "" {
-		testURL = defaultTestURL
-	}
-	probeHTTPItems(liveItems, livePorts, testURL, realDelay)
-
 	if len(httpItems) == 0 {
 		return results
 	}
@@ -268,6 +239,10 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 			failAll(fmt.Sprintf("Invalid allOutbounds JSON: %v", err))
 			return results
 		}
+	}
+
+	if testURL == "" {
+		testURL = defaultTestURL
 	}
 
 	if !httpTestSemaphore.TryLock() {
@@ -362,7 +337,18 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 		return err.exited, err
 	}
 
-	probeHTTPItems(items, ports, testURL, realDelay)
+	sem := make(chan struct{}, httpProbeConcurrency)
+	var wg sync.WaitGroup
+	for i := range items {
+		wg.Add(1)
+		go func(it *httpBatchItem, port int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			probeThroughSocks(port, testURL, httpProbeTimeout, realDelay, it.result)
+		}(items[i], ports[i])
+	}
+	wg.Wait()
 
 	if !proc.IsRunning() {
 		detail := proc.GetResult()
@@ -383,22 +369,6 @@ type portsReadyError struct {
 }
 
 func (e *portsReadyError) Error() string { return e.msg }
-
-// probeHTTPItems runs bounded HTTP requests through already-bound SOCKS ports.
-func probeHTTPItems(items []*httpBatchItem, ports []int, testURL string, realDelay bool) {
-	sem := make(chan struct{}, httpProbeConcurrency)
-	var wg sync.WaitGroup
-	for i := range items {
-		wg.Add(1)
-		go func(it *httpBatchItem, port int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			probeThroughSocks(port, testURL, httpProbeTimeout, realDelay, it.result)
-		}(items[i], ports[i])
-	}
-	wg.Wait()
-}
 
 // waitForPortsReady polls until every test inbound accepts connections,
 // aborting as soon as the process exits.

@@ -177,14 +177,4 @@ func TestLiveStartKeepsHealthyBridgeWhenAnotherCannotBind(t *testing.T) {
 	if len(failures) != 1 || failures[unavailable.Tag] == nil || !socksReady(available.Address()) {
 		t.Fatalf("expected only the occupied bridge to fail: %v", failures)
 	}
-	manager.Retain([]Desired{unavailable, available})
-	if port, applied := manager.ProbePort(available.Tag, available.Config); !applied || port != available.Port {
-		t.Fatalf("live probe did not select its real bridge: %d, %t", port, applied)
-	}
-	if port, applied := manager.ProbePort(unavailable.Tag, unavailable.Config); !applied || port != 0 {
-		t.Fatalf("unavailable route returned a probe address: %d, %t", port, applied)
-	}
-	if port, applied := manager.ProbePort(available.Tag, Config{Peer: "192.0.2.1:443"}); applied || port != 0 {
-		t.Fatalf("editing an outbound used the previous bridge: %d, %t", port, applied)
-	}
 }
