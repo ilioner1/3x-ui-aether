@@ -46,6 +46,18 @@ def api(path, method="POST", body=None, *, form=False):
     return message.get("obj")
 
 
+def wait_for_panel():
+    last_error = None
+    for _ in range(30):
+        try:
+            api("/server/status", "GET")
+            return
+        except (urllib.error.URLError, RuntimeError) as error:
+            last_error = error
+            time.sleep(1)
+    raise RuntimeError("The installed panel API did not become ready") from last_error
+
+
 def free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -104,6 +116,7 @@ def verify_route(tag, inbound_tag):
 
 
 def main():
+    wait_for_panel()
     inbound_port = free_port()
     client_id = str(uuid.uuid4())
     tag = urllib.parse.urlsplit(AETHER_URI).fragment
