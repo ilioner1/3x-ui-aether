@@ -140,8 +140,10 @@ def main():
     link = next(
         (link for link in exported_links(links) if link.username == client_id), None
     )
-    if link is None or link.hostname != "127.0.0.1" or link.port != inbound_port:
-        raise RuntimeError("The panel did not export the expected VLESS client link")
+    if link is None:
+        raise RuntimeError("The panel did not export a VLESS link for the new client")
+    if link.hostname not in {"localhost", "127.0.0.1"} or link.port != inbound_port:
+        raise RuntimeError("The exported VLESS link points to an unexpected endpoint")
     print("The panel exported a VLESS link for the new client", flush=True)
 
     config = api("/xray/")["xraySetting"]

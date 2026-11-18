@@ -262,21 +262,26 @@ func TestScriptConfigRejectsUnreadableSettings(t *testing.T) {
 	}
 }
 
-func TestScriptConfigReadFailureKeepsServiceSetup(t *testing.T) {
+func TestScriptConfigReadFailure(t *testing.T) {
 	for _, script := range []string{"install.sh", "update.sh"} {
 		t.Run(script, func(t *testing.T) {
 			dir, out, err := runScriptConfig(t, script, "/a/", true, "failure", 1, true)
-			if err != nil || !strings.Contains(out, "Unable to read webBasePath") {
-				t.Errorf("service setup should continue after the settings warning: %v\n%s", err, out)
+			if !strings.Contains(out, "Unable to read webBasePath") {
+				t.Errorf("missing settings warning: %v\n%s", err, out)
 			}
-			wantLifecycle, wantServices := "fail2ban\n", ""
+			wantLifecycle := "fail2ban\n"
 			if script == "install.sh" {
-				wantLifecycle = "unit\nfail2ban\n"
-				wantServices = "daemon-reload\nenable x-ui\nstart x-ui\n"
+				// A fresh install must not expose the panel with default settings.
+				wantLifecycle = ""
+				if err == nil {
+					t.Error("fresh installation should stop after the settings warning")
+				}
+			} else if err != nil {
+				t.Errorf("update should continue after the settings warning: %v\n%s", err, out)
 			}
 			for name, want := range map[string]string{
 				"path": "/a/", "username": "admin", "password": "admin", "writes": "",
-				"lifecycle": wantLifecycle, "restarts": wantServices,
+				"lifecycle": wantLifecycle, "restarts": "",
 			} {
 				if actual := readScriptState(t, dir, name); actual != want {
 					t.Errorf("%s = %q, want %q", name, actual, want)
