@@ -152,9 +152,12 @@ def main():
     config = response["xraySetting"]
     if isinstance(config, str):
         config = json.loads(config)
-    config["outbounds"].append({
-        "protocol": "aether", "tag": tag, "settings": {"uri": AETHER_URI},
-    })
+    expected_outbound = {"protocol": "aether", "tag": tag, "settings": {"uri": AETHER_URI}}
+    if os.environ.get("XUI_AETHER_REQUIRE_IMPORTED") == "1":
+        if expected_outbound not in config["outbounds"]:
+            raise RuntimeError("The browser-imported Aether outbound was not saved")
+    else:
+        config["outbounds"].append(expected_outbound)
     config.setdefault("routing", {}).setdefault("rules", []).insert(0, {
         "type": "field", "inboundTag": [inbound_tag], "outboundTag": tag,
     })

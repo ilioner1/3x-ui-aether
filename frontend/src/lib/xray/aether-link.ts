@@ -1,3 +1,7 @@
+export const aetherLinkError =
+  'Invalid Aether link. Use aether://IP:port with supported MASQUE options.';
+export const isAetherLink = (value: string) => /^aether:\/\//i.test(value.trim());
+
 const options: Record<string, readonly string[]> = {
   protocol: ['masque'],
   scan: ['turbo', 'balanced', 'thorough', 'stealth', 'ironclad'],
@@ -6,8 +10,15 @@ const options: Record<string, readonly string[]> = {
   noize: ['off', 'light', 'firewall', 'balanced', 'gfw', 'aggressive'],
 };
 
-export function parseAetherLink(raw: string): Record<string, unknown> | null {
-  const uri = raw.trim();
+interface AetherLinkOutbound extends Record<string, unknown> {
+  protocol: 'aether';
+  tag: string;
+  settings: { uri: string };
+}
+
+export function parseAetherLink(raw: string): AetherLinkOutbound | null {
+  if (!isAetherLink(raw)) return null;
+  const uri = raw.trim().replace(/^aether:/i, 'aether:');
   try {
     const u = new URL(uri);
     if (
