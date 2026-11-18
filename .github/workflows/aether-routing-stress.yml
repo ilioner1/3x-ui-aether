@@ -6,6 +6,7 @@ on:
       - .github/workflows/aether-routing-stress.yml
       - scripts/aether-routing-fixture.py
       - scripts/smoke-aether-routing.py
+      - scripts/smoke-aether-live-batch.py
 
 permissions:
   contents: read
@@ -37,3 +38,27 @@ jobs:
             export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
             exec python3 scripts/smoke-aether-routing.py
           '
+
+  live-batch:
+    if: github.repository == 'ilioner1/3x-ui-aether'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install published Aether panel
+        run: |
+          installer="$RUNNER_TEMP/install.sh"
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.6/install.sh -o "$installer"
+          sudo env XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1
+      - name: Check all 24 live Psiphon chains
+        run: |
+          if ! sudo bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            exec python3 scripts/smoke-aether-live-batch.py
+          '; then
+            sudo find /etc/x-ui/aether -name core.log -exec grep -hiE '429|rate limit|psiphon is ready|timed out|resource temporarily|thread|out of memory' {} + | tail -60 || true
+            exit 1
+          fi
