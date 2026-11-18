@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Replace only the panel binary on an existing native Aether installation.
+# Update the panel and its Psiphon companion on an existing native Aether installation.
 set -euo pipefail
-release=v3.11.0-aether.2
+release=v3.11.0-aether.3
 panel=/usr/local/x-ui/x-ui
+psiphon=/usr/local/x-ui/bin/pt/psiphon-tunnel-core
+notices=/usr/local/x-ui/bin/aether-licenses
 
 if [[ $EUID != 0 ]]; then
     echo "Run this update as root." >&2
@@ -20,13 +22,20 @@ case "$(uname -m)" in
     *) echo "Unsupported CPU architecture." >&2; exit 1 ;;
 esac
 
+exec 9>/usr/local/x-ui/.aether-update.lock
+flock -n 9 || { echo "Another Aether update is running." >&2; exit 1; }
 stage=$(mktemp -d /usr/local/x-ui/.aether-update.XXXXXXXX)
 rollback=false
 cleanup() {
     local code=$?
     if [[ $rollback == true ]]; then
-        echo "Restoring the previous panel binary." >&2
+        echo "Restoring the previous panel and companion." >&2
         systemctl stop x-ui || true
+        if [[ -e $stage/previous-psiphon ]]; then
+            mv -f -- "$stage/previous-psiphon" "$psiphon" || exit 1
+        else
+            rm -f -- "$psiphon" || exit 1
+        fi
         if ! mv -f -- "$stage/previous" "$panel" || ! systemctl start x-ui; then
             echo "Rollback failed. Inspect $stage and x-ui.service." >&2
             exit 1
@@ -54,12 +63,22 @@ if [[ ! $checksum =~ ^[0-9a-f]{64}$ ]] ||
     exit 1
 fi
 tar -xOf "$stage/$archive" x-ui/x-ui > "$stage/next"
+tar -xOf "$stage/$archive" x-ui/bin/pt/psiphon-tunnel-core > "$stage/next-psiphon"
+tar -xf "$stage/$archive" -C "$stage" x-ui/bin/aether-licenses
 test -s "$stage/next"
-chmod 0755 "$stage/next"
+test -s "$stage/next-psiphon"
+chmod 0755 "$stage/next" "$stage/next-psiphon"
+install -d "${psiphon%/*}"
+if [[ -e $psiphon ]]; then
+    cp -p -- "$psiphon" "$stage/previous-psiphon"
+fi
+install -d "$notices"
+cp -R "$stage/x-ui/bin/aether-licenses/." "$notices/"
 cp -p -- "$panel" "$stage/previous"
 systemctl stop x-ui
 rollback=true
 mv -f -- "$stage/next" "$panel"
+mv -f -- "$stage/next-psiphon" "$psiphon"
 systemctl start x-ui
 sleep 3
 systemctl is-active --quiet x-ui

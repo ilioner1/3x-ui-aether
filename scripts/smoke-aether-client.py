@@ -13,10 +13,11 @@ import urllib.request
 import uuid
 
 
-AETHER_URI = (
+AETHER_URI = os.environ.get("XUI_AETHER_TEST_URI") or (
     "aether://162.159.198.223:443"
     "?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2"
 )
+REQUESTED_REGION = urllib.parse.parse_qs(urllib.parse.urlsplit(AETHER_URI).query).get("region", [""])[0]
 TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
 XRAY_BIN = pathlib.Path("/usr/local/x-ui/bin")
 BASE = (
@@ -37,7 +38,7 @@ def api(path, method="POST", body=None, *, form=False):
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(BASE + path, data, headers, method=method)
     try:
-        with HTTP.open(request, timeout=40) as response:
+        with HTTP.open(request, timeout=320 if REQUESTED_REGION else 40) as response:
             message = json.load(response)
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"{method} {path}: HTTP {error.code}") from None
@@ -184,14 +185,16 @@ def main():
                     status, seconds = metrics.split()
                     trace = dict(line.split("=", 1) for line in body.splitlines() if "=" in line)
                     warp = trace.get("warp")
-                    if status == "200" and warp in {"on", "plus"}:
-                        print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}")
+                    location = trace.get("loc")
+                    verified = location == REQUESTED_REGION if REQUESTED_REGION else warp in {"on", "plus"}
+                    if status == "200" and verified:
+                        print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}, region {location}")
                         return
-                    print(f"Unexpected tunnel response: HTTP {status}, WARP {warp}", flush=True)
+                    print(f"Unexpected tunnel response: HTTP {status}, WARP {warp}, region {location}", flush=True)
                 else:
                     print(result.stderr.strip(), flush=True)
                 time.sleep(2)
-            raise RuntimeError("No successful WARP response through the exported VLESS link")
+            raise RuntimeError("No successful response with the expected egress through the exported VLESS link")
         finally:
             client.terminate()
             client.wait(timeout=10)

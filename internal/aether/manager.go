@@ -77,6 +77,15 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 		return nil, err
 	}
 	args := append(d.Config.Args(), "--config", filepath.Join(dir, "identity.toml"))
+	bind := d.Address()
+	if d.Config.Psiphon {
+		// Xray must dial Psiphon, while Psiphon dials the base Aether tunnel.
+		bind = "127.0.0.1:0"
+		args = append(args, "--psiphon", "--psiphon-bind", d.Address(), "--psiphon-mode", d.Config.PsiphonMode)
+		if d.Config.Region != "" {
+			args = append(args, "--psiphon-region", d.Config.Region)
+		}
+	}
 	cmd := exec.CommandContext(context.Background(), m.binary, args...)
 	cmd.Dir = dir
 	for _, value := range os.Environ() {
@@ -84,7 +93,7 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 			cmd.Env = append(cmd.Env, value)
 		}
 	}
-	cmd.Env = append(cmd.Env, "AETHER_SOCKS="+d.Address())
+	cmd.Env = append(cmd.Env, "AETHER_SOCKS="+bind)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -169,7 +178,7 @@ func (m *Manager) Watch(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.mu.Lock()
-			attempt, cancel := context.WithTimeout(ctx, 20*time.Second)
+			attempt, cancel := context.WithTimeout(ctx, StartupTimeout(m.desired, 20*time.Second))
 			if err := m.ensureLocked(attempt, m.desired); err != nil {
 				log.Printf("Aether restart: %v", err)
 			}

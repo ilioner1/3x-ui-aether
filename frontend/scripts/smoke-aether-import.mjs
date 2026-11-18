@@ -18,12 +18,22 @@ try {
   ]);
 
   await page.goto(`${base}/panel/xray#outbound`);
-  await page.getByRole('button', { name: 'more', exact: true }).first().click();
-  await page.getByRole('menuitem', { name: 'Import Outbounds' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Import Outbounds' });
-  await dialog.getByRole('textbox', { name: 'Import Outbounds' }).fill(uri);
-  await dialog.getByRole('button', { name: 'Import Outbounds' }).click();
-  await page.getByText('mokhaberaat2', { exact: true }).waitFor();
+  async function importLink(link, tag) {
+    await page.getByRole('button', { name: 'more', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Import Outbounds' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Import Outbounds' });
+    await dialog.getByRole('textbox', { name: 'Import Outbounds' }).fill(link);
+    await dialog.getByRole('button', { name: 'Import Outbounds' }).click();
+    await page.getByText(tag, { exact: true }).waitFor();
+  }
+
+  await importLink(
+    'aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat',
+    'mokhaberaat',
+  );
+  console.log('Browser accepted the exact Psiphon chain URI');
+  await page.reload();
+  await importLink(uri, 'mokhaberaat2');
 
   const saved = page.waitForResponse((response) =>
     response.url().endsWith('/panel/api/xray/update') && response.request().method() === 'POST',

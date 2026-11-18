@@ -1785,7 +1785,7 @@ require_repo_files() {
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    local tag_version="v3.11.0-aether.2"
+    local tag_version="v3.11.0-aether.3"
     local script_ref="$tag_version"
     local archive="x-ui-linux-$(arch).tar.gz"
     stage=$(mktemp -d) || exit 1
@@ -1810,7 +1810,7 @@ install_x-ui() {
     local xui_script_temp="$stage/x-ui-menu"
     tar -xOf "$stage/$archive" x-ui/x-ui.sh >"$xui_script_temp" &&
         [[ -s "$xui_script_temp" ]] &&
-        tar -tzf "$stage/$archive" x-ui/bin/aether "x-ui/bin/xray-linux-$(arch)" x-ui/x-ui x-ui/x-ui.service.debian >/dev/null ||
+        tar -tzf "$stage/$archive" x-ui/bin/aether x-ui/bin/pt/psiphon-tunnel-core "x-ui/bin/xray-linux-$(arch)" x-ui/x-ui x-ui/x-ui.service.debian >/dev/null ||
         { echo "Aether package is incomplete." >&2; exit 1; }
 
     # Stop x-ui service and remove old resources

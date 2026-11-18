@@ -10,14 +10,18 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	Peer      string
-	Scan      string
-	IP        string
-	Transport string
-	Noize     string
+	Peer        string
+	Scan        string
+	IP          string
+	Transport   string
+	Noize       string
+	Psiphon     bool   `json:",omitempty"`
+	PsiphonMode string `json:",omitempty"`
+	Region      string `json:",omitempty"`
 }
 
 type Desired struct {
@@ -46,8 +50,16 @@ func ParseURI(raw string) (Config, error) {
 		"protocol": {"masque"}, "scan": {"turbo", "balanced", "thorough", "stealth", "ironclad"},
 		"ip": {"v4", "v6", "both"}, "transport": {"h2", "h3"},
 		"noize": {"off", "light", "firewall", "balanced", "gfw", "aggressive"},
+		"psiphon": {"chain"}, "psiphon_mode": {"auto", "cdn", "direct"},
 	}
 	for key, values := range q {
+		if key == "region" && len(values) == 1 {
+			region := strings.ToUpper(values[0])
+			if len(region) == 2 && region[0] >= 'A' && region[0] <= 'Z' && region[1] >= 'A' && region[1] <= 'Z' {
+				c.Region = region
+				continue
+			}
+		}
 		allowed, exists := choices[key]
 		valid := false
 		if exists && len(values) == 1 {
@@ -71,11 +83,31 @@ func ParseURI(raw string) (Config, error) {
 	if q.Has("noize") {
 		c.Noize = q.Get("noize")
 	}
+	c.Psiphon = q.Get("psiphon") == "chain"
+	if !c.Psiphon && (q.Has("psiphon_mode") || q.Has("region")) {
+		return c, fmt.Errorf("aether: psiphon_mode and region require psiphon=chain")
+	}
+	if c.Psiphon {
+		c.PsiphonMode = q.Get("psiphon_mode")
+		if c.PsiphonMode == "" {
+			c.PsiphonMode = "auto"
+		}
+	}
 	return c, nil
 }
 
 func (c Config) Args() []string {
 	return []string{"--masque", "--peer", c.Peer, "--scan", c.Scan, "--ip", c.IP, "--" + c.Transport, "--noize", c.Noize, "--no-quick-reconnect"}
+}
+
+// StartupTimeout allows the second hop to connect after the base tunnel.
+func StartupTimeout(desired []Desired, standard time.Duration) time.Duration {
+	for _, d := range desired {
+		if d.Config.Psiphon {
+			standard += 200 * time.Second
+		}
+	}
+	return standard
 }
 
 func IsOutbound(raw []byte) bool {

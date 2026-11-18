@@ -17,7 +17,7 @@ concurrency:
   group: aether-native-release
   cancel-in-progress: true
 env:
-  RELEASE_TAG: v3.11.0-aether.2
+  RELEASE_TAG: v3.11.0-aether.3
 jobs:
   package:
     if: github.repository == 'ilioner1/3x-ui-aether'
@@ -50,6 +50,8 @@ jobs:
           bash -n scripts/update-aether-panel.sh
           npm --prefix frontend ci
           (cd frontend && npx vitest run --project components src/test/outbound-form-modal.test.tsx src/test/outbounds-loopback-index.test.tsx -t Aether)
+          (cd frontend && npx vitest run --project unit src/test/aether-outbound.test.ts)
+          go test ./internal/aether ./internal/util/link
           npm --prefix frontend run build
           mkdir -p build
           go build -trimpath -o build/x-ui .
@@ -71,7 +73,7 @@ jobs:
           package_dir="$PWD/packages"
           if [[ "${{ matrix.arch }}" == amd64 ]]; then
             installer="$RUNNER_TEMP/install-aether-previous.sh"
-            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.1/install.sh -o "$installer"
+            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.2/install.sh -o "$installer"
             package_dir=""
           fi
           if ! sudo env XUI_AETHER_PACKAGE_DIR="$package_dir" XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1; then
@@ -85,6 +87,7 @@ jobs:
           sudo systemctl is-active --quiet x-ui
           test -x /usr/bin/x-ui
           test -x /usr/local/x-ui/bin/aether
+          test -x /usr/local/x-ui/bin/pt/psiphon-tunnel-core
           sudo /usr/bin/x-ui status >/dev/null
           echo "x-ui menu and systemd status verified"
           sudo systemctl show x-ui -p Environment --value | grep -Fq XUI_AETHER_NATIVE=1
@@ -119,6 +122,21 @@ jobs:
             export XUI_AETHER_REQUIRE_IMPORTED=1
             exec python3 scripts/smoke-aether-client.py
           '
+      - name: Probe the requested Psiphon chain and India egress
+        if: matrix.arch == 'amd64'
+        continue-on-error: true
+        timeout-minutes: 7
+        env:
+          XUI_AETHER_TEST_URI: "aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat"
+        run: |
+          if ! sudo --preserve-env=XUI_AETHER_TEST_URI bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            exec python3 scripts/smoke-aether-client.py
+          '; then
+            sudo find /etc/x-ui/aether -name core.log -exec grep -hE 'psiphon is asked|psiphon is ready|psiphon starts|starting psiphon|can leave from|tunnel timed out|connection refused|could not connect|all attempts failed' {} + || true
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.arch }}

@@ -11,4 +11,13 @@ describe('Aether outbound import', () => {
     const form = rawOutboundToFormValues(parsed!);
     expect(formValuesToWirePayload(form)).toMatchObject(parsed!);
   });
+  it('preserves Psiphon chain and the requested region', () => {
+    const uri =
+      'aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat';
+    const outbound = parseOutboundLink(uri);
+    expect(outbound).toEqual({ protocol: 'aether', tag: 'mokhaberaat', settings: { uri } });
+    expect(formValuesToWirePayload(rawOutboundToFormValues(outbound!))).toMatchObject(outbound!);
+    expect(parseOutboundLink(uri.replace('&psiphon=chain', ''))).toBeNull();
+    expect(parseOutboundLink(uri.replace('region=IN', 'region=IND'))).toBeNull();
+  });
 });

@@ -17,4 +17,9 @@ binary=$(find "$temporary" -type f -name aether -print -quit)
 test -n "$binary"
 mkdir -p "$destination"
 install -m 0755 "$binary" "$destination/aether"
+psiphon=$(find "$temporary" -type f -name psiphon-tunnel-core -print -quit)
+test -n "$psiphon"
+install -d "$destination/pt"
+install -m 0755 "$psiphon" "$destination/pt/psiphon-tunnel-core"
+cp -R "$(dirname "$binary")/LICENSES" "$destination/aether-licenses"
 printf 'Installed Aether %s in %s\n' "$version" "$destination"

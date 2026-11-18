@@ -1538,7 +1538,7 @@ func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 		previous = process.GetConfig().AetherOutbounds
 	}
 	manager := aether.LiveManager()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), aether.StartupTimeout(xrayConfig.AetherOutbounds, 90*time.Second))
 	defer cancel()
 	if err := manager.Ensure(ctx, xrayConfig.AetherOutbounds); err != nil {
 		return err

@@ -298,7 +298,7 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 	cfg.OutboundConfigs = json_util.RawMessage(bridged)
 	manager := aether.NewManager(probeRoot, aether.BinaryPath())
 	defer manager.StopAll()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), aether.StartupTimeout(desired, 90*time.Second))
 	defer cancel()
 	if err := manager.Ensure(ctx, desired); err != nil {
 		return false, err

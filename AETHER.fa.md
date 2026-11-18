@@ -1,18 +1,26 @@
 # پنل 3x-ui با اوتباند Aether
 
 این شاخه لینک‌های `aether://` را به هستهٔ واقعی Aether v2.4.0 وصل می‌کند.
-پشتیبانی فعلی MASQUE روی HTTP/2 و HTTP/3 است. لینک نمونه:
+پشتیبانی فعلی MASQUE روی HTTP/2 و HTTP/3 است و می‌توان Psiphon را به‌عنوان خروجی پس از MASQUE انتخاب کرد. لینک نمونه:
 
 ```text
 aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2
 ```
+
+نمونهٔ زنجیرهٔ Psiphon با درخواست خروجی هند:
+
+```text
+aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat
+```
+
+پارامتر `psiphon=chain` ترافیک را از MASQUE به Psiphon می‌فرستد. `psiphon_mode` یکی از `auto`، `cdn` و `direct` است. `region` کد دوحرفی منطقهٔ درخواستی است و اتصال به موجود بودن خروجی آن منطقه بستگی دارد.
 
 ## نصب مستقیم مثل سنایی
 
 روی Ubuntu، Debian یا Armbian با systemd و پردازندهٔ amd64 یا arm64، در SSH و با دسترسی root اجرا کنید:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.2/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.3/install.sh)
 ```
 
 نصب‌کننده بستهٔ آمادهٔ پنل، Xray و Aether را از همین مخزن می‌گیرد و منوی `x-ui` و سرویس `x-ui.service` را راه می‌اندازد. نصب به Docker، Go یا Node.js نیاز ندارد. برای دیدن منو `x-ui` و برای دیدن آدرس و تنظیمات پنل `x-ui settings` را اجرا کنید.
@@ -21,10 +29,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.
 
 ## به‌روزرسانی نسخهٔ نصب‌شدهٔ Aether
 
-روی نصب مستقیم قبلی Aether، با دسترسی root این دستور را اجرا کنید. پنل برای تعویض فایل اجرایی کوتاه‌مدت راه‌اندازی مجدد می‌شود و پایگاه‌داده، تنظیمات و هسته‌ها حفظ می‌شوند.
+روی نصب مستقیم قبلی Aether، با دسترسی root این دستور را اجرا کنید. پنل برای به‌روزرسانی پنل و نصب Psiphon کوتاه‌مدت راه‌اندازی مجدد می‌شود و پایگاه‌داده، تنظیمات و هسته‌ها حفظ می‌شوند.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.2/scripts/update-aether-panel.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.3/scripts/update-aether-panel.sh)
 ```
 
 ## ساخت کانفیگ VLESS با خروجی Aether

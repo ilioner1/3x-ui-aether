@@ -57,3 +57,16 @@ func TestRemarkAndQueryOrderingDoNotRestartAnUnchangedTunnel(t *testing.T) {
 		t.Fatalf("same tunnel has different identity: %+v / %+v", a, b)
 	}
 }
+
+func TestPsiphonChainURI(t *testing.T) {
+	const uri = "aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat"
+	cfg, err := ParseURI(uri)
+	if err != nil || !cfg.Psiphon || cfg.PsiphonMode != "auto" || cfg.Region != "IN" || cfg.Peer != "162.159.199.111:1701" {
+		t.Fatalf("ParseURI() = %+v, %v", cfg, err)
+	}
+	for _, query := range []string{"region=IN", "psiphon_mode=auto", "psiphon=reverse", "psiphon=chain&region=IND", "psiphon=chain&region=IN&region=DE"} {
+		if _, err := ParseURI("aether://162.159.199.111:1701?" + query); err == nil {
+			t.Errorf("accepted invalid options %q", query)
+		}
+	}
+}
