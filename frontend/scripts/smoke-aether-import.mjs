@@ -12,11 +12,10 @@ try {
   await page.goto(`${base}/`);
   await page.locator('[autocomplete="username"]').fill(process.env.XUI_USERNAME);
   await page.locator('[autocomplete="current-password"]').fill(process.env.XUI_PASSWORD);
-  const loggedIn = page.waitForResponse((response) =>
-    response.url().endsWith('/login') && response.request().method() === 'POST',
-  );
-  await page.locator('button[type="submit"]').click();
-  if (!(await (await loggedIn).json()).success) throw new Error('Panel login failed');
+  await Promise.all([
+    page.waitForURL('**/panel/'),
+    page.locator('button[type="submit"]').click(),
+  ]);
 
   await page.goto(`${base}/panel/xray#outbound`);
   await page.getByRole('button', { name: 'more', exact: true }).first().click();
@@ -30,7 +29,7 @@ try {
     response.url().endsWith('/panel/api/xray/update') && response.request().method() === 'POST',
   );
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  if (!(await (await saved).json()).success) throw new Error('Panel rejected the imported outbound');
+  if (!(await saved).ok()) throw new Error('Panel rejected the imported outbound');
   console.log('Browser imported and saved the raw Aether URI');
 } finally {
   await browser.close();

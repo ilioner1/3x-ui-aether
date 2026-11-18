@@ -9,6 +9,7 @@ on:
       - x-ui.service.debian
       - scripts/install-aether.sh
       - scripts/update-aether-panel.sh
+      - frontend/scripts/smoke-aether-import.mjs
       - internal/web/controller/server.go
 permissions:
   contents: read
