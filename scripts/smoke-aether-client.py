@@ -146,7 +146,10 @@ def main():
         raise RuntimeError("The exported VLESS link points to an unexpected endpoint")
     print("The panel exported a VLESS link for the new client", flush=True)
 
-    config = api("/xray/")["xraySetting"]
+    response = api("/xray/")
+    if isinstance(response, str):
+        response = json.loads(response)
+    config = response["xraySetting"]
     if isinstance(config, str):
         config = json.loads(config)
     config["outbounds"].append({
