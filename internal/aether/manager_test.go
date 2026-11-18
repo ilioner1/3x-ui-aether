@@ -4,6 +4,7 @@ package aether
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -29,7 +30,7 @@ func TestAetherProcessHelper(t *testing.T) {
 		go func() {
 			defer conn.Close()
 			var hello [3]byte
-			if _, err := io.ReadFull(conn, hello[:]); err == nil {
+			if _, err := io.ReadFull(conn, hello[:]); err == nil && os.Getenv("XUI_AETHER_HELPER_STALL") != "1" {
 				_, _ = conn.Write([]byte{5, 0})
 			}
 		}()
@@ -103,4 +104,44 @@ func TestFailedReplacementKeepsOldTunnelAndStopsNewChildren(t *testing.T) {
 		t.Fatalf("StopAll left tunnel running: %v", err)
 	}
 	_ = l.Close()
+}
+
+func TestLiveListenersStartWithoutRemoteSOCKSReadiness(t *testing.T) {
+	t.Setenv("XUI_AETHER_HELPER", "1")
+	t.Setenv("XUI_AETHER_HELPER_STALL", "1")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(t.TempDir(), "aether")
+	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", "'\"'\"'") + "' -test.run=TestAetherProcessHelper -- \"$@\"\n"
+	if err := os.WriteFile(launcher, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(t.TempDir(), launcher)
+	t.Cleanup(manager.StopAll)
+	var desired []Desired
+	var reservations []net.Listener
+	for i := range 6 {
+		reservation, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		reservations = append(reservations, reservation)
+		tag := fmt.Sprintf("aether-%d", i+1)
+		desired = append(desired, Desired{ID: tag, Tag: tag, Port: reservation.Addr().(*net.TCPAddr).Port})
+	}
+	for _, reservation := range reservations {
+		_ = reservation.Close()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := manager.EnsureListeners(ctx, desired); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range desired {
+		if !tcpListenerReady(d.Address()) || socksReady(d.Address()) {
+			t.Fatalf("bridge %q should be bound with SOCKS still pending", d.Tag)
+		}
+	}
 }

@@ -17,6 +17,7 @@ AETHER_URI = os.environ.get("XUI_AETHER_TEST_URI") or (
     "aether://162.159.198.223:443"
     "?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2"
 )
+TEST_MULTIPLE = os.environ.get("XUI_AETHER_MULTIPLE") == "1"
 REQUESTED_REGION = urllib.parse.parse_qs(urllib.parse.urlsplit(AETHER_URI).query).get("region", [""])[0]
 TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
 XRAY_BIN = pathlib.Path("/usr/local/x-ui/bin")
@@ -153,33 +154,63 @@ def main():
     config = response["xraySetting"]
     if isinstance(config, str):
         config = json.loads(config)
+    if TEST_MULTIPLE:
+        # Four deliberately unresponsive Psiphon exits before the working
+        # fifth outbound and another after it. A pending exit must not stall
+        # Save or make Xray dispatch through its direct default.
+        unavailable_uri = (
+            "aether://192.0.2.44:443?protocol=masque&transport=h2"
+            "&psiphon=chain&psiphon_mode=auto"
+        )
+        for index in range(1, 7):
+            if index != 5:
+                filler_tag = f"aether-pending-{index}"
+                config["outbounds"].append({
+                    "protocol": "aether", "tag": filler_tag,
+                    "settings": {"uri": f"{unavailable_uri}#{filler_tag}"},
+                })
     expected_outbound = {"protocol": "aether", "tag": tag, "settings": {"uri": AETHER_URI}}
     if os.environ.get("XUI_AETHER_REQUIRE_IMPORTED") == "1":
         if expected_outbound not in config["outbounds"]:
             raise RuntimeError("The browser-imported Aether outbound was not saved")
     else:
-        config["outbounds"].append(expected_outbound)
-    config.setdefault("routing", {}).setdefault("rules", []).insert(0, {
-        "type": "field", "inboundTag": [inbound_tag], "outboundTag": tag,
-    })
-    api("/xray/update", body={
-        "xraySetting": json.dumps(config), "outboundTestUrl": TRACE_URL,
-    }, form=True)
-    api("/server/restartXrayService")
+        if TEST_MULTIPLE:
+            config["outbounds"].insert(len(config["outbounds"]) - 1, expected_outbound)
+        else:
+            config["outbounds"].append(expected_outbound)
+    rule = {"type": "field", "inboundTag": [inbound_tag], "outboundTag": tag}
+    config.setdefault("routing", {}).setdefault("rules", []).insert(0, rule)
+
+    def save_config():
+        started = time.monotonic()
+        api("/xray/update", body={
+            "xraySetting": json.dumps(config), "outboundTestUrl": TRACE_URL,
+        }, form=True)
+        elapsed = time.monotonic() - started
+        print(f"Xray configuration saved and applied in {elapsed:.2f} s", flush=True)
+        if TEST_MULTIPLE and elapsed >= 12:
+            raise RuntimeError("Saving waited for remote tunnel readiness")
+
+    save_config()
+    if not TEST_MULTIPLE:
+        api("/server/restartXrayService")
     verify_route(tag, inbound_tag)
     print("The running Xray configuration routes the inbound to Aether", flush=True)
 
     with tempfile.TemporaryDirectory() as scratch:
         port, client = start_client(link, pathlib.Path(scratch))
         try:
-            for _ in range(10):
-                if client.poll() is not None:
-                    raise RuntimeError("The VLESS client process exited")
-                result = subprocess.run([
-                    "curl", "--silent", "--show-error", "--fail", "--max-time", "12",
+            def request_trace(timeout):
+                return subprocess.run([
+                    "curl", "--silent", "--show-error", "--fail", "--max-time", str(timeout),
                     "--noproxy", "", "--proxy", f"socks5h://127.0.0.1:{port}",
                     "--write-out", "\n%{http_code} %{time_total}", TRACE_URL,
                 ], capture_output=True, text=True, check=False)
+
+            for _ in range(10):
+                if client.poll() is not None:
+                    raise RuntimeError("The VLESS client process exited")
+                result = request_trace(12)
                 if result.returncode == 0:
                     body, metrics = result.stdout.rsplit("\n", 1)
                     status, seconds = metrics.split()
@@ -189,6 +220,13 @@ def main():
                     verified = location == REQUESTED_REGION if REQUESTED_REGION else warp in {"on", "plus"}
                     if status == "200" and verified:
                         print(f"VLESS via Aether: HTTP {status}, {float(seconds) * 1000:.0f} ms, WARP {warp}, region {location}")
+                        if TEST_MULTIPLE:
+                            rule["outboundTag"] = "aether-pending-6"
+                            save_config()
+                            verify_route("aether-pending-6", inbound_tag)
+                            if request_trace(5).returncode == 0:
+                                raise RuntimeError("Unavailable sixth Aether outbound returned traffic")
+                            print("Sixth outbound failed closed instead of using the VPS exit")
                         return
                     print(f"Unexpected tunnel response: HTTP {status}, WARP {warp}, region {location}", flush=True)
                 else:

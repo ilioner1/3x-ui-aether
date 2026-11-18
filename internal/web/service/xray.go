@@ -1538,9 +1538,12 @@ func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 		previous = process.GetConfig().AetherOutbounds
 	}
 	manager := aether.LiveManager()
-	ctx, cancel := context.WithTimeout(context.Background(), aether.StartupTimeout(xrayConfig.AetherOutbounds, 90*time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := manager.Ensure(ctx, xrayConfig.AetherOutbounds); err != nil {
+	if err := manager.EnsureListeners(ctx, xrayConfig.AetherOutbounds); err != nil {
+		if process != nil && process.IsRunning() {
+			xrayState.holdBack(fmt.Sprintf("Aether configuration not applied: %v", err))
+		}
 		return err
 	}
 	defer func() {

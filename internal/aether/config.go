@@ -104,7 +104,7 @@ func (c Config) Args() []string {
 func StartupTimeout(desired []Desired, standard time.Duration) time.Duration {
 	for _, d := range desired {
 		if d.Config.Psiphon {
-			standard += 200 * time.Second
+			return standard + 200*time.Second
 		}
 	}
 	return standard

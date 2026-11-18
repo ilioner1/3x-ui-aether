@@ -30,16 +30,31 @@ func NewManager(root, binary string) *Manager {
 	return &Manager{root: root, binary: binary, children: map[string]*child{}}
 }
 
-// Ensure starts replacements before Retain removes old tunnels, preserving a working route on failure.
+// Ensure waits for SOCKS readiness when the caller needs to probe the actual tunnel.
 func (m *Manager) Ensure(ctx context.Context, desired []Desired) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ensureLocked(ctx, desired)
+	return m.ensureLocked(ctx, desired, socksReady, false)
 }
 
-func (m *Manager) ensureLocked(ctx context.Context, desired []Desired) error {
-	var started []string
-	for _, d := range desired {
+// EnsureListeners waits only for the listener Aether holds during connection.
+// Live Xray routes can then use it while the remote tunnel is still connecting.
+func (m *Manager) EnsureListeners(ctx context.Context, desired []Desired) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ensureLocked(ctx, desired, tcpListenerReady, false)
+}
+
+func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready func(string) bool, keepSuccessful bool) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	started := make([]*child, len(desired))
+	var workers sync.WaitGroup
+	var firstErr error
+	var recordError sync.Once
+
+	for i, d := range desired {
 		if cur := m.children[d.ID]; cur != nil {
 			select {
 			case <-cur.done:
@@ -48,21 +63,38 @@ func (m *Manager) ensureLocked(ctx context.Context, desired []Desired) error {
 				continue
 			}
 		}
-		cur, err := m.start(ctx, d)
-		if err != nil {
-			for _, id := range started {
-				stop(m.children[id])
-				delete(m.children, id)
+		workers.Go(func() {
+			cur, err := m.start(ctx, d, ready)
+			if err != nil {
+				recordError.Do(func() {
+					firstErr = fmt.Errorf("aether outbound %q: %w", d.Tag, err)
+					if !keepSuccessful {
+						cancel()
+					}
+				})
+				return
 			}
-			return fmt.Errorf("aether outbound %q: %w", d.Tag, err)
-		}
-		m.children[d.ID] = cur
-		started = append(started, d.ID)
+			started[i] = cur
+		})
 	}
-	return nil
+	workers.Wait()
+
+	var cleanup sync.WaitGroup
+	for i, cur := range started {
+		if cur == nil {
+			continue
+		}
+		if firstErr != nil && !keepSuccessful {
+			cleanup.Go(func() { stop(cur) })
+		} else {
+			m.children[desired[i].ID] = cur
+		}
+	}
+	cleanup.Wait()
+	return firstErr
 }
 
-func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
+func (m *Manager) start(ctx context.Context, d Desired, ready func(string) bool) (*child, error) {
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", d.Address())
 	if err != nil {
 		return nil, fmt.Errorf("bridge address %s unavailable: %w", d.Address(), err)
@@ -111,11 +143,25 @@ func (m *Manager) start(ctx context.Context, d Desired) (*child, error) {
 		case <-cur.done:
 			return nil, fmt.Errorf("core exited before SOCKS readiness; inspect %s", filepath.Join(dir, "core.log"))
 		case <-ticker.C:
-			if socksReady(d.Address()) {
-				return cur, nil
+			if ready(d.Address()) {
+				select {
+				case <-cur.done:
+					return nil, fmt.Errorf("core exited before bridge readiness; inspect %s", filepath.Join(dir, "core.log"))
+				default:
+					return cur, nil
+				}
 			}
 		}
 	}
+}
+
+func tcpListenerReady(address string) bool {
+	conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 func socksReady(address string) bool {
@@ -159,12 +205,14 @@ func (m *Manager) Retain(desired []Desired) {
 	for _, d := range desired {
 		wanted[d.ID] = true
 	}
+	var cleanup sync.WaitGroup
 	for id, cur := range m.children {
 		if !wanted[id] {
-			stop(cur)
+			cleanup.Go(func() { stop(cur) })
 			delete(m.children, id)
 		}
 	}
+	cleanup.Wait()
 }
 
 func (m *Manager) StopAll() { m.Retain(nil) }
@@ -178,8 +226,8 @@ func (m *Manager) Watch(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.mu.Lock()
-			attempt, cancel := context.WithTimeout(ctx, StartupTimeout(m.desired, 20*time.Second))
-			if err := m.ensureLocked(attempt, m.desired); err != nil {
+			attempt, cancel := context.WithTimeout(ctx, 3*time.Second)
+			if err := m.ensureLocked(attempt, m.desired, tcpListenerReady, true); err != nil {
 				log.Printf("Aether restart: %v", err)
 			}
 			cancel()
