@@ -13,6 +13,7 @@ helpers = runpy.run_path(str(pathlib.Path(__file__).with_name("smoke-aether-clie
 api = helpers["api"]
 helpers["wait_for_panel"]()
 endpoint = "aether://162.159.199.111:1701?protocol=masque&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN"
+belgium = "aether://162.159.199.169:443?protocol=masque&scan=balanced&ip=v4&transport=h2&psiphon=chain&psiphon_mode=direct&region=BE#bel"
 trace_url = "https://www.cloudflare.com/cdn-cgi/trace"
 
 # All ports remain reserved until the client config is ready.
@@ -26,7 +27,7 @@ try:
     clients = []
     for index in range(1, 25):
         client_id = str(uuid.uuid4())
-        tag = f"aether-live-{index}"
+        tag = "bel" if index == 20 else f"aether-live-{index}"
         inbound = api("/inbounds/add", body={
             "remark": f"Aether live {index}", "enable": True, "listen": "127.0.0.1",
             "port": helpers["free_port"](), "protocol": "vless",
@@ -48,7 +49,7 @@ try:
     proxy_ports = []
     for (inbound_tag, tag, client_id), reservation in zip(clients, reservations):
         config["outbounds"].append({
-            "protocol": "aether", "tag": tag, "settings": {"uri": f"{endpoint}#{tag}"},
+            "protocol": "aether", "tag": tag, "settings": {"uri": belgium if tag == "bel" else f"{endpoint}#{tag}"},
         })
         rules.append({"type": "field", "inboundTag": [inbound_tag], "outboundTag": tag})
         proxy_port = reservation.getsockname()[1]
@@ -82,14 +83,15 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         def verify(index_port):
             index, port = index_port
+            region = "BE" if index == 20 else "IN"
             detail = ""
             for _ in range(6):
                 result = subprocess.run([
                     "curl", "-fsS", "--max-time", "12", "--noproxy", "",
                     "--proxy", f"socks5h://127.0.0.1:{port}", trace_url,
                 ], capture_output=True, text=True, check=False)
-                if result.returncode == 0 and "loc=IN" in result.stdout.splitlines():
-                    return index, True, "HTTP 200, loc=IN"
+                if result.returncode == 0 and f"loc={region}" in result.stdout.splitlines():
+                    return index, True, f"HTTP 200, loc={region}"
                 detail = next((line for line in result.stdout.splitlines() if line.startswith("loc=")), "")
                 detail = detail or result.stderr.strip() or "No valid response"
                 time.sleep(1)
@@ -102,7 +104,7 @@ with tempfile.TemporaryDirectory() as directory:
         unavailable = [index for index, success, _ in results if not success]
         if unavailable:
             raise RuntimeError(f"Unverified Psiphon routes: {unavailable}")
-        print("All 24 VLESS outbounds reached India over live Psiphon")
+        print("All 24 VLESS outbounds reached their requested regions over live Psiphon")
     finally:
         client.terminate()
         client.wait(timeout=10)
