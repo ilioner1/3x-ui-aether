@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -1544,12 +1545,31 @@ func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 	manager := aether.LiveManager()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := manager.EnsureListeners(ctx, xrayConfig.AetherOutbounds); err != nil {
-		if process != nil && process.IsRunning() {
-			xrayState.holdBack(fmt.Sprintf("Aether configuration not applied: %v", err))
+	failures := manager.EnsureAvailableListeners(ctx, xrayConfig.AetherOutbounds)
+	if len(failures) > 0 {
+		blocked, err := aether.BlockUnavailable(xrayConfig.OutboundConfigs, failures)
+		if err != nil {
+			manager.Retain(previous)
+			return err
 		}
-		return err
+		xrayConfig.OutboundConfigs = json_util.RawMessage(blocked)
+		s.SetToNeedReconcile()
 	}
+	defer func() {
+		if restartErr != nil {
+			return
+		}
+		if len(failures) > 0 {
+			tags := slices.Sorted(maps.Keys(failures))
+			message := "Aether bridges unavailable, traffic blocked: " + strings.Join(tags, ", ")
+			for _, tag := range tags {
+				logger.Warning(failures[tag].Error())
+			}
+			xrayState.holdBack(message)
+		} else if strings.HasPrefix(xrayState.heldBackReason(), "Aether bridges unavailable,") {
+			xrayState.holdBack("")
+		}
+	}()
 	defer func() {
 		if restartErr != nil {
 			manager.Retain(previous)

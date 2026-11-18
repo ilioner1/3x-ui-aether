@@ -215,3 +215,30 @@ func transform(raw []byte, namespace string, retained map[string]int, reserved m
 }
 
 func (d Desired) Address() string { return "127.0.0.1:" + strconv.Itoa(d.Port) }
+
+// BlockUnavailable replaces an unavailable bridge with a blackhole using the
+// same tag. Routing and balancers must never fall through to default egress
+// just because a sidecar could not start.
+func BlockUnavailable(raw []byte, failures map[string]error) ([]byte, error) {
+	if len(failures) == 0 {
+		return raw, nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, err
+	}
+	for i, entry := range entries {
+		var outbound struct{ Tag string }
+		if err := json.Unmarshal(entry, &outbound); err != nil {
+			return nil, err
+		}
+		if _, failed := failures[outbound.Tag]; failed {
+			blocked, err := json.Marshal(map[string]string{"tag": outbound.Tag, "protocol": "blackhole"})
+			if err != nil {
+				return nil, err
+			}
+			entries[i] = blocked
+		}
+	}
+	return json.Marshal(entries)
+}

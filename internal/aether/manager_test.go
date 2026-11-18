@@ -145,3 +145,36 @@ func TestLiveListenersStartWithoutRemoteSOCKSReadiness(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveStartKeepsHealthyBridgeWhenAnotherCannotBind(t *testing.T) {
+	t.Setenv("XUI_AETHER_HELPER", "1")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(t.TempDir(), "aether")
+	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", "'\"'\"'") + "' -test.run=TestAetherProcessHelper -- \"$@\"\n"
+	if err := os.WriteFile(launcher, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(t.TempDir(), launcher)
+	t.Cleanup(manager.StopAll)
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	available := Desired{ID: "available", Tag: "available", Port: free.Addr().(*net.TCPAddr).Port}
+	_ = free.Close()
+	unavailable := Desired{ID: "unavailable", Tag: "unavailable", Port: busy.Addr().(*net.TCPAddr).Port}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	failures := manager.EnsureAvailableListeners(ctx, []Desired{unavailable, available})
+	if len(failures) != 1 || failures[unavailable.Tag] == nil || !socksReady(available.Address()) {
+		t.Fatalf("expected only the occupied bridge to fail: %v", failures)
+	}
+}

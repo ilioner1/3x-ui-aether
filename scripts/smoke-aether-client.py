@@ -105,10 +105,10 @@ def start_client(link, directory):
     ])
 
 
-def verify_route(tag, inbound_tag):
+def verify_route(tag, inbound_tag, protocol="socks"):
     config = json.loads((XRAY_BIN / "config.json").read_text(encoding="utf-8"))
     outbound = next(entry for entry in config["outbounds"] if entry["tag"] == tag)
-    if outbound["protocol"] != "socks":
+    if outbound["protocol"] != protocol:
         raise RuntimeError("The installed Xray config did not activate the Aether bridge")
     if not any(
         rule.get("outboundTag") == tag and inbound_tag in rule.get("inboundTag", [])
@@ -223,7 +223,7 @@ def main():
                         if TEST_MULTIPLE:
                             rule["outboundTag"] = "aether-pending-20"
                             save_config()
-                            verify_route("aether-pending-20", inbound_tag)
+                            verify_route("aether-pending-20", inbound_tag, "blackhole")
                             if request_trace(5).returncode == 0:
                                 raise RuntimeError("Unavailable twentieth Aether outbound returned traffic")
                             print("Twentieth outbound failed closed instead of using the VPS exit")

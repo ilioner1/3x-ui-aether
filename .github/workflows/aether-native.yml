@@ -17,7 +17,7 @@ concurrency:
   group: aether-native-release
   cancel-in-progress: true
 env:
-  RELEASE_TAG: v3.11.0-aether.5
+  RELEASE_TAG: v3.11.0-aether.6
 jobs:
   package:
     if: github.repository == 'ilioner1/3x-ui-aether'
@@ -74,7 +74,7 @@ jobs:
           package_dir="$PWD/packages"
           if [[ "${{ matrix.arch }}" == amd64 ]]; then
             installer="$RUNNER_TEMP/install-aether-previous.sh"
-            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.4/install.sh -o "$installer"
+            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.5/install.sh -o "$installer"
             package_dir=""
           fi
           if ! sudo env XUI_AETHER_PACKAGE_DIR="$package_dir" XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1; then
@@ -138,6 +138,22 @@ jobs:
             sudo find /etc/x-ui/aether -name core.log -exec grep -hE 'psiphon is asked|psiphon is ready|psiphon starts|starting psiphon|can leave from|tunnel timed out|connection refused|could not connect|all attempts failed' {} + || true
             exit 1
           fi
+      - name: Inject one Aether process startup failure
+        if: matrix.arch == 'amd64'
+        run: |
+          cat > "$RUNNER_TEMP/aether-test-wrapper" <<'EOF'
+          #!/bin/bash
+          if [[ " $* " == *" --peer 192.0.2.44:443 "* && " $* " == *" --psiphon "* ]]; then
+            echo "Deliberate startup failure in the twentieth outbound test" >&2
+            exit 1
+          fi
+          exec /usr/local/x-ui/bin/aether "$@"
+          EOF
+          sudo install -m 0755 "$RUNNER_TEMP/aether-test-wrapper" /usr/local/bin/aether-test-wrapper
+          sudo install -d /etc/systemd/system/x-ui.service.d
+          printf '[Service]\nEnvironment=XUI_AETHER_BINARY=/usr/local/bin/aether-test-wrapper\n' | sudo tee /etc/systemd/system/x-ui.service.d/aether-test.conf >/dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl restart x-ui
       - name: Save twenty Aether outbounds and verify routing without direct fallback
         if: matrix.arch == 'amd64'
         env:

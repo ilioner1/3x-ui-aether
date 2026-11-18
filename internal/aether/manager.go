@@ -67,7 +67,7 @@ func (m *Manager) Render(raw []byte, namespace string, reserved map[int]bool) ([
 func (m *Manager) Ensure(ctx context.Context, desired []Desired) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ensureLocked(ctx, desired, socksReady, false)
+	return m.ensureLocked(ctx, desired, socksReady, false, nil)
 }
 
 // EnsureListeners waits only for the listener Aether holds during connection.
@@ -75,14 +75,26 @@ func (m *Manager) Ensure(ctx context.Context, desired []Desired) error {
 func (m *Manager) EnsureListeners(ctx context.Context, desired []Desired) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ensureLocked(ctx, desired, tcpListenerReady, false)
+	return m.ensureLocked(ctx, desired, tcpListenerReady, false, nil)
 }
 
-func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready func(string) bool, keepSuccessful bool) error {
+// EnsureAvailableListeners starts each live bridge independently and reports those
+// that could not be started so Xray can keep their route tags present but blocked.
+func (m *Manager) EnsureAvailableListeners(ctx context.Context, desired []Desired) map[string]error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	failures := make(map[string]error)
+	_ = m.ensureLocked(ctx, desired, tcpListenerReady, true, failures)
+	return failures
+}
+
+func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready func(string) bool, keepSuccessful bool, failures map[string]error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	started := make([]*child, len(desired))
+	startErrors := make([]error, len(desired))
 	var workers sync.WaitGroup
 	var firstErr error
 	var recordError sync.Once
@@ -99,8 +111,9 @@ func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready fun
 		workers.Go(func() {
 			cur, err := m.start(ctx, d, ready)
 			if err != nil {
+				startErrors[i] = fmt.Errorf("aether outbound %q: %w", d.Tag, err)
 				recordError.Do(func() {
-					firstErr = fmt.Errorf("aether outbound %q: %w", d.Tag, err)
+					firstErr = startErrors[i]
 					if !keepSuccessful {
 						cancel()
 					}
@@ -112,6 +125,13 @@ func (m *Manager) ensureLocked(ctx context.Context, desired []Desired, ready fun
 	}
 	workers.Wait()
 
+	if failures != nil {
+		for i, err := range startErrors {
+			if err != nil {
+				failures[desired[i].Tag] = err
+			}
+		}
+	}
 	var cleanup sync.WaitGroup
 	for i, cur := range started {
 		if cur == nil {
@@ -260,7 +280,7 @@ func (m *Manager) Watch(ctx context.Context) {
 		case <-ticker.C:
 			m.mu.Lock()
 			attempt, cancel := context.WithTimeout(ctx, 3*time.Second)
-			if err := m.ensureLocked(attempt, m.desired, tcpListenerReady, true); err != nil {
+			if err := m.ensureLocked(attempt, m.desired, tcpListenerReady, true, nil); err != nil {
 				log.Printf("Aether restart: %v", err)
 			}
 			cancel()
