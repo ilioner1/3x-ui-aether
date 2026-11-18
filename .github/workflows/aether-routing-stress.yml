@@ -1,0 +1,39 @@
+name: Aether routing stress
+on:
+  push:
+    branches: [feat/aether-outbound]
+    paths:
+      - .github/workflows/aether-routing-stress.yml
+      - scripts/aether-routing-fixture.py
+      - scripts/smoke-aether-routing.py
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    if: github.repository == 'ilioner1/3x-ui-aether'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install published Aether panel
+        run: |
+          installer="$RUNNER_TEMP/install.sh"
+          curl -fsSL --retry 10 --retry-all-errors --retry-delay 8 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.6/install.sh -o "$installer"
+          sudo env XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1
+      - name: Verify 24 real Xray routes against deterministic SOCKS outbounds
+        run: |
+          { printf '#!/usr/bin/env python3\n'; cat scripts/aether-routing-fixture.py; } >"$RUNNER_TEMP/aether-routing-fixture"
+          sudo install -m 0755 "$RUNNER_TEMP/aether-routing-fixture" /usr/local/bin/aether-routing-fixture
+          sudo install -d /etc/systemd/system/x-ui.service.d/
+          printf '[Service]\nEnvironment=XUI_AETHER_BINARY=/usr/local/bin/aether-routing-fixture\n' | sudo tee /etc/systemd/system/x-ui.service.d/aether-stress.conf >/dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl restart x-ui
+          sudo bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            exec python3 scripts/smoke-aether-routing.py
+          '
