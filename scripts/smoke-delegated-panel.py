@@ -1,0 +1,131 @@
+"""Exercise a delegated client against a real installed Xray."""
+import http.cookiejar
+import json
+import os
+import pathlib
+import re
+import runpy
+import sqlite3
+import subprocess
+import tempfile
+import time
+import urllib.parse
+import urllib.request
+
+helpers = runpy.run_path(str(pathlib.Path(__file__).with_name("smoke-aether-client.py")))
+api = helpers["api"]
+helpers["wait_for_panel"]()
+root = helpers["BASE"].removesuffix("/panel/api")
+password = "integration-delegate-only"
+port = helpers["free_port"]()
+inbound = api("/inbounds/add", body={
+    "remark": "Delegated smoke VLESS", "enable": True, "listen": "127.0.0.1",
+    "port": port, "protocol": "vless",
+    "settings": '{"clients":[],"decryption":"none"}',
+    "streamSettings": '{"network":"tcp","security":"none"}',
+    "sniffing": "{}",
+})
+
+def browser():
+    jar = http.cookiejar.CookieJar()
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
+
+def get(web, path):
+    with web.open(root + path, timeout=30) as response:
+        return response.read().decode()
+
+def post(web, path, csrf_page, fields):
+    csrf = re.search(r'name="_csrf" value="([^"]+)"', csrf_page).group(1)
+    values = urllib.parse.urlencode({**fields, "_csrf": csrf}).encode()
+    request = urllib.request.Request(root + path, data=values, headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+    })
+    with web.open(request, timeout=40) as response:
+        return response.read().decode()
+
+master = browser()
+logged_in = post(master, "/login", get(master, "/delegate/"), {
+    "username": os.environ["XUI_USERNAME"], "password": os.environ["XUI_PASSWORD"],
+})
+if not json.loads(logged_in)["success"]:
+    raise RuntimeError("Master login failed")
+admin_page = get(master, "/panel/delegated-admins")
+admin_page = post(master, "/panel/delegated-admins/group", admin_page, {
+    "name": "Smoke group", "inbound": str(inbound["id"]),
+})
+with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+    group = db.execute("SELECT id FROM delegated_groups WHERE name = 'Smoke group'").fetchone()[0]
+admin_page = post(master, "/panel/delegated-admins/account", admin_page, {
+    "username": "smoke-delegate", "password": password, "group": group, "quota": 1, "enable": 1,
+})
+
+delegate = browser()
+page = post(delegate, "/delegate/login", get(delegate, "/delegate/"), {"username": "smoke-delegate", "password": password})
+request_id = re.search(r'name="request" value="([^"]+)"', page).group(1)
+created = post(delegate, "/delegate/clients", page, {
+    "request": request_id, "label": "delegated-live-client", "inbound": inbound["id"],
+})
+if "delegated-live-client" not in created:
+    raise RuntimeError("Delegate could not create a client")
+with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+    owner = db.execute("SELECT id FROM delegated_admins WHERE username = 'smoke-delegate'").fetchone()[0]
+    client_id, email = db.execute(
+        "SELECT d.client_id, c.email FROM delegated_clients d JOIN clients c ON c.id = d.client_id WHERE d.admin_id = ?",
+        (owner,),
+    ).fetchone()
+exported = next(
+    link for link in helpers["exported_links"](api("/inbounds/allLinks", "GET"))
+    if link.port == port
+)
+if "delegated-live-client" not in get(master, f"/panel/delegated-reports?admin={owner}"):
+    raise RuntimeError("Client missing from master report")
+
+def wait_for(check, message, timeout=45):
+    until = time.monotonic() + timeout
+    while time.monotonic() < until:
+        if check():
+            return
+        time.sleep(1)
+    raise RuntimeError(message)
+
+with tempfile.TemporaryDirectory() as temporary:
+    proxy_port, proc = helpers["start_client"](exported, pathlib.Path(temporary))
+    try:
+        def connected():
+            return subprocess.run([
+                "curl", "-fsS", "--max-time", "5", "--noproxy", "",
+                "--proxy", f"socks5h://127.0.0.1:{proxy_port}", "https://www.cloudflare.com/cdn-cgi/trace",
+            ], capture_output=True, check=False).returncode == 0
+
+        wait_for(connected, "Delegate-created VLESS connection did not work")
+        print("Delegate created a live VLESS client on the granted inbound", flush=True)
+        # Shrink the test-only allowance to one byte beyond the current ledger,
+        # then generate traffic and let the production poll enforce the quota.
+        with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+            db.execute("UPDATE delegated_admins SET quota_bytes = used_bytes + 1 WHERE id = ?", (owner,))
+
+        connected()
+        def exhausted():
+            with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+                used, cap = db.execute("SELECT used_bytes, quota_bytes FROM delegated_admins WHERE id = ?", (owner,)).fetchone()
+            return used >= cap
+
+        wait_for(exhausted, "Live usage did not reach the account ledger")
+        def removed_from_xray():
+            live = json.loads((helpers["XRAY_BIN"] / "config.json").read_text(encoding="utf-8"))
+            active = next((row for row in live["inbounds"] if row["tag"] == inbound["tag"]), None)
+            return active is not None and all(row.get("email") != email for row in active["settings"].get("clients", []))
+
+        wait_for(removed_from_xray, "Exhausted client remained in the running configuration")
+        if connected():
+            raise RuntimeError("VLESS still worked with an exhausted delegated account")
+        print("Live traffic exhausted the account cap and disconnected VLESS", flush=True)
+        admin_page = get(master, f"/panel/delegated-admins?admin={owner}")
+        post(master, "/panel/delegated-admins/account", admin_page, {
+            "id": owner, "username": "smoke-delegate", "group": group, "quota": 2, "enable": 1,
+        })
+        wait_for(connected, "VLESS did not recover after a master top-up")
+        print("Master top-up restored the existing VLESS client", flush=True)
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
