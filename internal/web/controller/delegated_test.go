@@ -1,14 +1,15 @@
 package controller
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"io"
-	"strconv"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -135,5 +136,76 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	_, page = read("/panel/delegated-reports?admin=" + strconv.FormatInt(second.ID, 10))
 	if !strings.Contains(page, "SECOND-PRIVATE") || strings.Contains(page, "FIRST-PRIVATE") {
 		t.Fatal("master report did not show the chosen account")
+	}
+}
+
+func TestDelegatedLedgerAndReportsWithManyClients(t *testing.T) {
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
+	db := database.GetDB()
+	const perAdmin = 600
+	accounts := []model.DelegatedAdmin{
+		{Username: "many-clients-first", GroupID: 1, Enabled: true, QuotaBytes: perAdmin},
+		{Username: "many-clients-second", GroupID: 1, Enabled: true, QuotaBytes: 2 * perAdmin},
+	}
+	if err := db.Create(&accounts).Error; err != nil {
+		t.Fatal(err)
+	}
+	clients := make([]model.ClientRecord, 2*perAdmin)
+	for i := range clients {
+		clients[i] = model.ClientRecord{Email: fmt.Sprintf("report-client-%04d", i), Enable: true}
+	}
+	if err := db.CreateInBatches(&clients, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	owners := make([]model.DelegatedClient, len(clients))
+	traffic := make([]*xray.ClientTraffic, len(clients))
+	for i, client := range clients {
+		owners[i] = model.DelegatedClient{AdminID: accounts[i/perAdmin].ID, ClientID: &clients[i].Id, InitialEmail: client.Email, Label: client.Email}
+		traffic[i] = &xray.ClientTraffic{Email: client.Email, Up: 1}
+	}
+	if err := db.CreateInBatches(&owners, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		crossed, err := delegation.RecordTraffic(tx, traffic)
+		if err == nil && !crossed {
+			t.Error("quota crossing across traffic batches was missed")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, account := range accounts {
+		var ledger model.DelegatedAdmin
+		if err := db.First(&ledger, account.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if ledger.UsedBytes != perAdmin {
+			t.Fatalf("account %d recorded %d bytes, want %d", account.ID, ledger.UsedBytes, perAdmin)
+		}
+
+		var seen int
+		var cursor int64
+		for page := 0; page < perAdmin/delegatePageSize; page++ {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/?after=%d", cursor), nil)
+			var view delegatedView
+			if err := (&delegatedController{}).readClients(ctx, &view, account.ID); err != nil {
+				t.Fatal(err)
+			}
+			if len(view.Clients) != delegatePageSize {
+				t.Fatalf("page %d returned %d clients", page, len(view.Clients))
+			}
+			for _, row := range view.Clients {
+				if row.AdminID != account.ID || row.ID <= cursor || row.UsedBytes != 1 {
+					t.Fatalf("page %d contains an invalid client entry: %+v", page, row)
+				}
+				cursor = row.ID
+				seen++
+			}
+			if seen < perAdmin && view.Next != cursor || seen == perAdmin && view.Next != 0 {
+				t.Fatalf("page %d returned unexpected next cursor %d", page, view.Next)
+			}
+		}
 	}
 }
