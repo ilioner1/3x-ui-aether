@@ -24,10 +24,10 @@ type DelegatedInboundGrant struct {
 
 // Keep the ledger even if the master deletes a client or resets Xray stats.
 type DelegatedClient struct {
-	ID           int64   `gorm:"primaryKey;index:idx_delegated_client_page,priority:2"`
-	AdminID      int64   `gorm:"not null;index:idx_delegated_client_page,priority:1"`
-	ClientID     *int    `gorm:"uniqueIndex"`
-	InitialEmail string  `gorm:"uniqueIndex;not null"`
-	Label        string  `gorm:"size:100;not null"`
-	UsedBytes    int64   `gorm:"not null"`
+	ID           int64  `gorm:"primaryKey;index:idx_delegated_client_page,priority:2"`
+	AdminID      int64  `gorm:"not null;index:idx_delegated_client_page,priority:1"`
+	ClientID     *int   `gorm:"uniqueIndex"`
+	InitialEmail string `gorm:"uniqueIndex;not null"`
+	Label        string `gorm:"size:100;not null"`
+	UsedBytes    int64  `gorm:"not null"`
 }

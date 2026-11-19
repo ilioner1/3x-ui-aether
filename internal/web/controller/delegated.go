@@ -23,10 +23,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const delegateSessionID = "delegateAccount"
-const delegateSessionEpoch = "delegateEpoch"
-const delegateGiB = int64(1 << 30)
-const delegatePageSize = 50
+const (
+	delegateSessionID    = "delegateAccount"
+	delegateSessionEpoch = "delegateEpoch"
+	delegateGiB          = int64(1 << 30)
+	delegatePageSize     = 50
+)
 
 //go:embed delegated.html
 var delegatedHTML string
@@ -38,38 +40,38 @@ var delegatedPage = template.Must(template.New("delegated").Funcs(template.FuncM
 
 type delegatedController struct {
 	BaseController
-	clients service.ClientService
+	clients  service.ClientService
 	inbounds service.InboundService
-	xray service.XrayService
+	xray     service.XrayService
 }
 
 type delegatedClientRow struct {
-	TotalGB int64
-	ID int64
-	Label string
+	TotalGB   int64
+	ID        int64
+	Label     string
 	UsedBytes int64
-	Email string
-	Enabled bool
-	AdminID int64
+	Email     string
+	Enabled   bool
+	AdminID   int64
 }
 
 type delegatedView struct {
-	Base string
-	CSRF string
-	Page string
+	Base     string
+	CSRF     string
+	Page     string
 	Username string
-	Admin model.DelegatedAdmin
-	Admins []model.DelegatedAdmin
-	Groups []model.DelegatedGroup
-	Group model.DelegatedGroup
+	Admin    model.DelegatedAdmin
+	Admins   []model.DelegatedAdmin
+	Groups   []model.DelegatedGroup
+	Group    model.DelegatedGroup
 	Inbounds []model.Inbound
-	Granted map[int]bool
-	Clients []delegatedClientRow
-	Links []string
+	Granted  map[int]bool
+	Clients  []delegatedClientRow
+	Links    []string
 	Selected int64
-	Next int64
-	Error string
-	Request string
+	Next     int64
+	Error    string
+	Request  string
 }
 
 func (a *delegatedController) register(g *gin.RouterGroup) {

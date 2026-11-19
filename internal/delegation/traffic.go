@@ -25,8 +25,8 @@ func RecordTraffic(tx *gorm.DB, traffic []*xray.ClientTraffic) (bool, error) {
 		return false, nil
 	}
 	type owner struct {
-		Email string
-		ID int64
+		Email   string
+		ID      int64
 		AdminID int64
 	}
 	byAdmin := make(map[int64]int64)
@@ -70,7 +70,7 @@ func RecordTraffic(tx *gorm.DB, traffic []*xray.ClientTraffic) (bool, error) {
 
 type blockedClient struct {
 	InboundID int
-	Email string
+	Email     string
 }
 
 func BlockedClients(tx *gorm.DB) (map[int]map[string]bool, error) {
