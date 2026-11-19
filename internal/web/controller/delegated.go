@@ -12,15 +12,16 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/middleware"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/session"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -279,7 +280,7 @@ func (a *delegatedController) createClient(c *gin.Context) {
 		return
 	}
 	payload := service.ClientCreatePayload{
-		Client: model.Client{Email: owner.InitialEmail, Enable: true, Comment: label},
+		Client:     model.Client{Email: owner.InitialEmail, Enable: true, Comment: label},
 		InboundIds: []int{int(inbound)},
 	}
 	restart, createErr := a.clients.Create(&a.inbounds, &payload)

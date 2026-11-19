@@ -16,14 +16,15 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/session"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
@@ -107,7 +108,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 
 	_, page := read("/delegate/")
 	if status := send("/delegate/login", url.Values{
-		"username": {"first-delegate"}, "password": {"test-password"}, "_csrf": {tokenFrom(page)},
+		"username": {"first-delegate"},
+		"password": {"test-password"},
+		"_csrf":    {tokenFrom(page)},
 	}); status != http.StatusSeeOther {
 		t.Fatalf("delegate login status %d", status)
 	}
@@ -122,7 +125,10 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 		t.Fatalf("cross-account link access returned %d", status)
 	}
 	if status := send("/delegate/clients", url.Values{
-		"_csrf": {tokenFrom(page)}, "label": {"not granted"}, "inbound": {"999"}, "request": {"ffde0ed0-1ef0-4c0e-a232-aedb7beaa831"},
+		"_csrf":   {tokenFrom(page)},
+		"label":   {"not granted"},
+		"inbound": {"999"},
+		"request": {"ffde0ed0-1ef0-4c0e-a232-aedb7beaa831"},
 	}); status != http.StatusOK {
 		t.Fatalf("ungranted create status %d", status)
 	}
