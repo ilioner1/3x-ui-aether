@@ -108,7 +108,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	_, page := read("/delegate/")
 	if status := send("/delegate/login", url.Values{
 		"username": {"first-delegate"}, "password": {"test-password"}, "_csrf": {tokenFrom(page)},
-	}); status != http.StatusSeeOther { t.Fatalf("delegate login status %d", status) }
+	}); status != http.StatusSeeOther {
+		t.Fatalf("delegate login status %d", status)
+	}
 	_, page = read("/delegate/")
 	if !strings.Contains(page, "FIRST-PRIVATE") || strings.Contains(page, "SECOND-PRIVATE") {
 		t.Fatal("delegate portal ownership isolation failed")
@@ -121,7 +123,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	}
 	if status := send("/delegate/clients", url.Values{
 		"_csrf": {tokenFrom(page)}, "label": {"not granted"}, "inbound": {"999"}, "request": {"ffde0ed0-1ef0-4c0e-a232-aedb7beaa831"},
-	}); status != http.StatusOK { t.Fatalf("ungranted create status %d", status) }
+	}); status != http.StatusOK {
+		t.Fatalf("ungranted create status %d", status)
+	}
 	var count int64
 	if err := db.Model(&model.DelegatedClient{}).Count(&count).Error; err != nil || count != 2 {
 		t.Fatalf("ungranted create added a row: %d %v", count, err)
@@ -133,7 +137,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 			t.Error("quota crossing not detected")
 		}
 		return err
-	}); err != nil { t.Fatal(err) }
+	}); err != nil {
+		t.Fatal(err)
+	}
 	blocked, err := delegation.BlockedClients(db)
 	if err != nil || !blocked[100][f.Email] {
 		t.Fatalf("quota did not block first account: %#v %v", blocked, err)

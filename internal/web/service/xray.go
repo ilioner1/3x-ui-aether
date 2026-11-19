@@ -19,8 +19,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
-	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
@@ -1521,11 +1521,6 @@ func (s *XrayService) TestRoute(req xray.RouteTestRequest) (*xray.RouteTestResul
 	return s.xrayAPI.TestRoute(req)
 }
 
-// RestartXray reconciles the running Xray process with the current desired
-// config. When isForce is false it first tries to apply the changes through
-// the Xray gRPC API without restarting the process (inbounds, outbounds and
-// routing rules/balancers are hot-reloadable); only changes the core cannot
-// take at runtime — or a force request — stop and restart the process.
 var delegatedDisconnect atomic.Bool
 
 // ScheduleDelegatedDisconnect reapplies entitlement changes and closes already
@@ -1535,6 +1530,11 @@ func (s *XrayService) ScheduleDelegatedDisconnect() {
 	s.SetToNeedReconcile()
 }
 
+// RestartXray reconciles the running Xray process with the current desired
+// config. When isForce is false it first tries to apply the changes through
+// the Xray gRPC API without restarting the process (inbounds, outbounds and
+// routing rules/balancers are hot-reloadable); only changes the core cannot
+// take at runtime — or a force request — stop and restart the process.
 func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 	lock.Lock()
 	defer lock.Unlock()

@@ -252,8 +252,11 @@ func (a *delegatedController) createClient(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	owner := model.DelegatedClient{AdminID: admin.ID, Label: label,
-		InitialEmail: fmt.Sprintf("reseller-%d-%s", admin.ID, requestID.String())}
+	owner := model.DelegatedClient{
+		AdminID:      admin.ID,
+		Label:        label,
+		InitialEmail: fmt.Sprintf("reseller-%d-%s", admin.ID, requestID.String()),
+	}
 	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("enabled = ? AND session_epoch = ?", true, admin.SessionEpoch).
 			Take(&admin, admin.ID).Error; err != nil {
@@ -457,8 +460,13 @@ func (a *delegatedController) saveAdmin(c *gin.Context) {
 			return err
 		}
 		if id == 0 {
-			return tx.Create(&model.DelegatedAdmin{Username: username, PasswordHash: string(hash), GroupID: groupID,
-				Enabled: enabled, QuotaBytes: quota * delegateGiB}).Error
+			return tx.Create(&model.DelegatedAdmin{
+				Username:     username,
+				PasswordHash: string(hash),
+				GroupID:      groupID,
+				Enabled:      enabled,
+				QuotaBytes:   quota * delegateGiB,
+			}).Error
 		}
 		var admin model.DelegatedAdmin
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&admin, id).Error; err != nil {
