@@ -195,6 +195,8 @@ export default function AppSidebar() {
         icon: route.icon,
         title: t(route.titleKey),
       })),
+      { key: '/delegated-admins', icon: SafetyOutlined, title: 'Admins' },
+      { key: '/delegated-reports', icon: ReadOutlined, title: 'Admin Reports' },
       { key: LOGOUT_KEY, icon: LogoutOutlined, title: t('logout') },
     ],
     [t],
@@ -321,6 +323,10 @@ export default function AppSidebar() {
       if (key === LOGOUT_KEY) {
         await HttpUtil.post('/logout');
         window.location.href = window.X_UI_BASE_PATH || '/';
+        return;
+      }
+      if (key === '/delegated-admins' || key === '/delegated-reports') {
+        window.location.href = `${window.X_UI_BASE_PATH || '/'}panel${key}`;
         return;
       }
       navigate(key);

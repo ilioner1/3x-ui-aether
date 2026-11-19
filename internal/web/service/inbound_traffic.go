@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
@@ -51,13 +52,22 @@ func (s *InboundService) addTrafficLocked(inboundTraffics []*xray.Traffic, clien
 	db := database.GetDB()
 	// Commit durable traffic before best-effort lifecycle maintenance so helper
 	// failures cannot discard usage already reported by Xray.
+	var accountCapReached bool
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		if err := s.addInboundTraffic(tx, inboundTraffics); err != nil {
 			return err
 		}
-		return s.addClientTraffic(tx, clientTraffics)
+		if err := s.addClientTraffic(tx, clientTraffics); err != nil {
+			return err
+		}
+		var err error
+		accountCapReached, err = delegation.RecordTraffic(tx, clientTraffics)
+		return err
 	}); err != nil {
 		return false, false, nil, nil, nil, err
+	}
+	if accountCapReached {
+		(&XrayService{}).ScheduleDelegatedDisconnect()
 	}
 
 	var (

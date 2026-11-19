@@ -1,0 +1,41 @@
+name: Delegated admins
+on:
+  push:
+    branches: [feat/aether-outbound]
+    paths:
+      - 'internal/delegation/**'
+      - 'internal/web/controller/delegated*'
+      - '.github/workflows/delegated-admins.yml'
+permissions:
+  contents: read
+jobs:
+  isolation:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: delegated-test
+          POSTGRES_DB: xui
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make dist-stub
+      - run: go test ./internal/web/controller -run '^TestDelegatedAccountIsolationAndQuota$' -v -count=1 -timeout=5m
+        env:
+          XUI_DB_TYPE: ${{ matrix.database }}
+          XUI_DB_DSN: postgres://postgres:delegated-test@127.0.0.1:5432/xui?sslmode=disable

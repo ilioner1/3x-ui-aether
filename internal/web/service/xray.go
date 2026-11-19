@@ -18,6 +18,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
@@ -208,6 +210,10 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	delegatedBlocked, err := delegation.BlockedClients(database.GetDB())
+	if err != nil {
+		return nil, err
+	}
 	excludedClients, excludedInbounds := 0, 0
 	for _, inbound := range inbounds {
 		if !inbound.Enable {
@@ -260,7 +266,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 				excludedClients++
 				continue
 			}
-			if !c.Enable {
+			if !c.Enable || delegatedBlocked[inbound.Id][c.Email] {
 				continue
 			}
 			flow := c.Flow
@@ -1520,6 +1526,15 @@ func (s *XrayService) TestRoute(req xray.RouteTestRequest) (*xray.RouteTestResul
 // the Xray gRPC API without restarting the process (inbounds, outbounds and
 // routing rules/balancers are hot-reloadable); only changes the core cannot
 // take at runtime — or a force request — stop and restart the process.
+var delegatedDisconnect atomic.Bool
+
+// ScheduleDelegatedDisconnect reapplies entitlement changes and closes already
+// authenticated connections when an account is suspended or exceeds its cap.
+func (s *XrayService) ScheduleDelegatedDisconnect() {
+	delegatedDisconnect.Store(true)
+	s.SetToNeedReconcile()
+}
+
 func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 	lock.Lock()
 	defer lock.Unlock()
@@ -1528,6 +1543,14 @@ func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 		return nil
 	}
 	isManuallyStopped.Store(false)
+	if delegatedDisconnect.Swap(false) {
+		isForce = true
+		defer func() {
+			if restartErr != nil {
+				s.ScheduleDelegatedDisconnect()
+			}
+		}()
+	}
 
 	xrayConfig, err := s.GetXrayConfig()
 	if err != nil {
