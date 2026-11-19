@@ -106,7 +106,10 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 		return m[1]
 	}
 
-	_, page := read("/delegate/")
+	_, page := read("/delegate/?account=first-delegate")
+	if !strings.Contains(page, `name="username" value="first-delegate"`) {
+		t.Fatal("personal login link did not prefill the username")
+	}
 	if status := send("/delegate/login", url.Values{
 		"username": {"first-delegate"},
 		"password": {"test-password"},
@@ -160,6 +163,12 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 
 	if status, _ := read("/test-master"); status != http.StatusNoContent {
 		t.Fatal("master test login failed")
+	}
+	_, page = read("/panel/delegated-admins")
+	for _, username := range []string{first.Username, second.Username} {
+		if !strings.Contains(page, `href="/delegate/?account=`+username+`"`) {
+			t.Fatalf("master page is missing the personal login link for %s", username)
+		}
 	}
 	_, page = read("/panel/delegated-reports?admin=" + strconv.FormatInt(second.ID, 10))
 	if !strings.Contains(page, "SECOND-PRIVATE") || strings.Contains(page, "FIRST-PRIVATE") {

@@ -60,7 +60,14 @@ admin_page = post(master, "/panel/delegated-admins/account", admin_page, {
 })
 
 delegate = browser()
-page = post(delegate, "/delegate/login", get(delegate, "/delegate/"), {"username": "smoke-delegate", "password": password})
+match = re.search(r'href="([^"]*/delegate/\?account=smoke-delegate)"', admin_page)
+if not match:
+    raise RuntimeError("New admin has no personal login link")
+with delegate.open(urllib.parse.urljoin(root + "/", match.group(1)), timeout=30) as response:
+    login_page = response.read().decode()
+if 'name="username" value="smoke-delegate"' not in login_page:
+    raise RuntimeError("Personal login link did not prefill the account")
+page = post(delegate, "/delegate/login", login_page, {"username": "smoke-delegate", "password": password})
 request_id = re.search(r'name="request" value="([^"]+)"', page).group(1)
 created = post(delegate, "/delegate/clients", page, {
     "request": request_id, "label": "delegated-live-client", "inbound": inbound["id"],

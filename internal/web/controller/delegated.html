@@ -23,7 +23,7 @@
 <section class="card login"><h1>ورود ادمین</h1>
 <form method="post" action="{{.Base}}delegate/login">
 <input type="hidden" name="_csrf" value="{{.CSRF}}">
-<label>نام کاربری <input name="username" maxlength="64" autocomplete="username" required></label>
+<label>نام کاربری <input name="username" value="{{.Username}}" maxlength="64" autocomplete="username" required></label>
 <label>رمز عبور <input name="password" type="password" autocomplete="current-password" required></label>
 <button>ورود</button></form></section>
 {{else if eq .Page "admins"}}
@@ -53,8 +53,8 @@
 <label><input name="enable" type="checkbox" value="1" {{if or (not .Admin.ID) .Admin.Enabled}}checked{{end}}> فعال</label>
 <button>ذخیرهٔ ادمین</button></form>
 </section></div>
-<section class="card table"><table><thead><tr><th>حساب</th><th>سقف (GiB)</th><th>مصرف (GiB)</th><th>گزارش</th></tr></thead><tbody>
-{{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a> {{if not .Enabled}}(تعلیق){{end}}</td><td>{{gib .QuotaBytes}}</td><td>{{gib .UsedBytes}}</td><td><a href="{{$.Base}}panel/delegated-reports?admin={{.ID}}">مشاهدهٔ کلاینت‌ها</a></td></tr>{{end}}
+<section class="card table"><table><thead><tr><th>حساب</th><th>سقف (GiB)</th><th>مصرف (GiB)</th><th>گزارش</th><th>ورود ادمین</th></tr></thead><tbody>
+{{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a> {{if not .Enabled}}(تعلیق){{end}}</td><td>{{gib .QuotaBytes}}</td><td>{{gib .UsedBytes}}</td><td><a href="{{$.Base}}panel/delegated-reports?admin={{.ID}}">مشاهدهٔ کلاینت‌ها</a></td><td><a href="{{$.Base}}delegate/?account={{.Username}}">لینک ورود</a></td></tr>{{end}}
 </tbody></table></section>
 {{else if or (eq .Page "portal") (eq .Page "reports")}}
 {{if eq .Page "portal"}}

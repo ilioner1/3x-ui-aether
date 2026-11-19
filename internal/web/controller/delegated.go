@@ -145,7 +145,7 @@ func (a *delegatedController) login(c *gin.Context) {
 	password := c.PostForm("password")
 	remote := getRemoteIp(c)
 	if _, allowed := defaultLoginLimiter.allow(remote, username); !allowed || username == "" || len(password) > 72 {
-		a.render(c, delegatedView{Page: "login", Error: "ورود ناموفق بود."})
+		a.render(c, delegatedView{Page: "login", Username: username, Error: "ورود ناموفق بود."})
 		return
 	}
 	var admin model.DelegatedAdmin
@@ -157,7 +157,7 @@ func (a *delegatedController) login(c *gin.Context) {
 	valid := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
 	if err != nil || !valid {
 		defaultLoginLimiter.registerFailure(remote, username)
-		a.render(c, delegatedView{Page: "login", Error: "نام کاربری یا رمز معتبر نیست."})
+		a.render(c, delegatedView{Page: "login", Username: username, Error: "نام کاربری یا رمز معتبر نیست."})
 		return
 	}
 	defaultLoginLimiter.registerSuccess(remote, username)
@@ -214,7 +214,7 @@ func (a *delegatedController) readClients(c *gin.Context, view *delegatedView, i
 func (a *delegatedController) portal(c *gin.Context) {
 	admin, ok := a.current(c)
 	if !ok {
-		a.render(c, delegatedView{Page: "login"})
+		a.render(c, delegatedView{Page: "login", Username: delegateName(c.Query("account"), 64)})
 		return
 	}
 	a.portalView(c, admin, "")
