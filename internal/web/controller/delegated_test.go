@@ -78,7 +78,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	read := func(path string) (int, string) {
 		t.Helper()
 		r, err := web.Get(server.URL + path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer r.Body.Close()
 		var out strings.Builder
 		_, _ = io.Copy(&out, r.Body)
@@ -87,7 +89,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	send := func(path string, values url.Values) int {
 		t.Helper()
 		r, err := web.PostForm(server.URL+path, values)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer r.Body.Close()
 		return r.StatusCode
 	}
@@ -95,7 +99,9 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	tokenFrom := func(body string) string {
 		t.Helper()
 		m := csrfPattern.FindStringSubmatch(body)
-		if len(m) != 2 { t.Fatal("CSRF token not rendered") }
+		if len(m) != 2 {
+			t.Fatal("CSRF token not rendered")
+		}
 		return m[1]
 	}
 
@@ -123,16 +129,26 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		crossed, err := delegation.RecordTraffic(tx, []*xray.ClientTraffic{{Email: f.Email, Up: 60, Down: 40}})
-		if err == nil && !crossed { t.Error("quota crossing not detected") }
+		if err == nil && !crossed {
+			t.Error("quota crossing not detected")
+		}
 		return err
 	}); err != nil { t.Fatal(err) }
 	blocked, err := delegation.BlockedClients(db)
-	if err != nil || !blocked[100][f.Email] { t.Fatalf("quota did not block first account: %#v %v", blocked, err) }
-	if err := db.Model(&first).UpdateColumn("quota_bytes", 200).Error; err != nil { t.Fatal(err) }
+	if err != nil || !blocked[100][f.Email] {
+		t.Fatalf("quota did not block first account: %#v %v", blocked, err)
+	}
+	if err := db.Model(&first).UpdateColumn("quota_bytes", 200).Error; err != nil {
+		t.Fatal(err)
+	}
 	blocked, err = delegation.BlockedClients(db)
-	if err != nil || blocked[100][f.Email] { t.Fatalf("top-up did not release quota block: %#v %v", blocked, err) }
+	if err != nil || blocked[100][f.Email] {
+		t.Fatalf("top-up did not release quota block: %#v %v", blocked, err)
+	}
 
-	if status, _ := read("/test-master"); status != http.StatusNoContent { t.Fatal("master test login failed") }
+	if status, _ := read("/test-master"); status != http.StatusNoContent {
+		t.Fatal("master test login failed")
+	}
 	_, page = read("/panel/delegated-reports?admin=" + strconv.FormatInt(second.ID, 10))
 	if !strings.Contains(page, "SECOND-PRIVATE") || strings.Contains(page, "FIRST-PRIVATE") {
 		t.Fatal("master report did not show the chosen account")

@@ -34,7 +34,7 @@ const (
 var delegatedHTML string
 
 var delegatedPage = template.Must(template.New("delegated").Funcs(template.FuncMap{
-	"gib": func(n int64) string { return strconv.FormatFloat(float64(n)/float64(delegateGiB), 'f', 2, 64) },
+	"gib":   func(n int64) string { return strconv.FormatFloat(float64(n)/float64(delegateGiB), 'f', 2, 64) },
 	"quota": func(n int64) int64 { return n / delegateGiB },
 }).Parse(delegatedHTML))
 

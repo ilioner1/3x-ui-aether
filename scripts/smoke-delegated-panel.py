@@ -69,8 +69,8 @@ if "delegated-live-client" not in created:
     raise RuntimeError("Delegate could not create a client")
 with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
     owner = db.execute("SELECT id FROM delegated_admins WHERE username = 'smoke-delegate'").fetchone()[0]
-    client_id, email = db.execute(
-        "SELECT d.client_id, c.email FROM delegated_clients d JOIN clients c ON c.id = d.client_id WHERE d.admin_id = ?",
+    (email,) = db.execute(
+        "SELECT c.email FROM delegated_clients d JOIN clients c ON c.id = d.client_id WHERE d.admin_id = ?",
         (owner,),
     ).fetchone()
 exported = next(
@@ -99,24 +99,38 @@ with tempfile.TemporaryDirectory() as temporary:
 
         wait_for(connected, "Delegate-created VLESS connection did not work")
         print("Delegate created a live VLESS client on the granted inbound", flush=True)
-        # Shrink the test-only allowance to one byte beyond the current ledger,
-        # then generate traffic and let the production poll enforce the quota.
+        def ledger():
+            with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+                return db.execute("SELECT used_bytes, quota_bytes FROM delegated_admins WHERE id = ?", (owner,)).fetchone()
+
+        def sampled():
+            if ledger()[0] > 0:
+                return True
+            connected()
+            return False
+
+        # The first Xray stats sample establishes the baseline. Keep sending
+        # traffic until a subsequent sample is recorded in the real ledger.
+        wait_for(sampled, "Live VLESS did not add usage after the stats baseline", timeout=80)
+        print("Xray recorded live VLESS traffic in the account ledger", flush=True)
+
         with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
             db.execute("UPDATE delegated_admins SET quota_bytes = used_bytes + 1 WHERE id = ?", (owner,))
 
-        connected()
         def exhausted():
-            with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
-                used, cap = db.execute("SELECT used_bytes, quota_bytes FROM delegated_admins WHERE id = ?", (owner,)).fetchone()
-            return used >= cap
+            used, cap = ledger()
+            if used >= cap:
+                return True
+            connected()
+            return False
 
-        wait_for(exhausted, "Live usage did not reach the account ledger")
+        wait_for(exhausted, "Live traffic did not reach the lowered account cap", timeout=60)
         def removed_from_xray():
             live = json.loads((helpers["XRAY_BIN"] / "config.json").read_text(encoding="utf-8"))
             active = next((row for row in live["inbounds"] if row["tag"] == inbound["tag"]), None)
             return active is not None and all(row.get("email") != email for row in active["settings"].get("clients", []))
 
-        wait_for(removed_from_xray, "Exhausted client remained in the running configuration")
+        wait_for(removed_from_xray, "Exhausted client remained in the running configuration", timeout=75)
         if connected():
             raise RuntimeError("VLESS still worked with an exhausted delegated account")
         print("Live traffic exhausted the account cap and disconnected VLESS", flush=True)
@@ -124,7 +138,7 @@ with tempfile.TemporaryDirectory() as temporary:
         post(master, "/panel/delegated-admins/account", admin_page, {
             "id": owner, "username": "smoke-delegate", "group": group, "quota": 2, "enable": 1,
         })
-        wait_for(connected, "VLESS did not recover after a master top-up")
+        wait_for(connected, "VLESS did not recover after a master top-up", timeout=75)
         print("Master top-up restored the existing VLESS client", flush=True)
     finally:
         proc.terminate()
