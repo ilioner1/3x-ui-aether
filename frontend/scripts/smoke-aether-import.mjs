@@ -48,8 +48,11 @@ try {
   await delegate.getByRole('button', { name: 'Add Clients', exact: true }).click();
   const clientForm = delegate.getByRole('dialog');
   await clientForm.getByRole('textbox').first().fill('delegated-browser-client');
-  await clientForm.getByRole('combobox').click();
-  await delegate.getByRole('option', { name: /Delegated smoke VLESS/ }).click();
+  const inboundPicker = clientForm.getByRole('combobox');
+  await inboundPicker.click();
+  await delegate.getByRole('option', { name: /Delegated smoke VLESS/ }).waitFor({ state: 'attached' });
+  await inboundPicker.press('ArrowDown');
+  await inboundPicker.press('Enter');
   await clientForm.getByRole('spinbutton').fill('1');
   const created = delegate.waitForResponse((response) =>
     response.url().endsWith('/delegate/api/clients/add') && response.request().method() === 'POST',
