@@ -166,6 +166,7 @@ func clientSearchCond(variants []string) (string, []any) {
 // memory cost ~200ms per request at 20k clients on a page that polls every
 // 5 seconds, which is what made the table feel stuck on large panels.
 type clientQuery struct {
+	delegateID       int64
 	db               *gorm.DB
 	joins            []clientQueryJoin
 	usedExpr         string
@@ -212,6 +213,13 @@ func (q clientQuery) from() *gorm.DB {
 	tx := q.db.Table("clients AS c")
 	for _, j := range q.joins {
 		tx = tx.Joins(j.sql, j.args...)
+	}
+	return q.owned(tx)
+}
+
+func (q clientQuery) owned(tx *gorm.DB) *gorm.DB {
+	if q.delegateID > 0 {
+		return tx.Joins("JOIN delegated_clients owner ON owner.client_id = c.id AND owner.admin_id = ?", q.delegateID)
 	}
 	return tx
 }
@@ -401,12 +409,7 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 	onlines := inboundSvc.GetOnlineClients()
 	q := newClientQuery(db, time.Now().UnixMilli(), expireDiffMs, trafficDiffBytes)
 
-	if params.DelegatedAdminID > 0 {
-		q.joins = append(q.joins, clientQueryJoin{
-			sql:  "JOIN delegated_clients owner ON owner.client_id = c.id AND owner.admin_id = ?",
-			args: []any{params.DelegatedAdminID},
-		})
-	}
+	q.delegateID = params.DelegatedAdminID
 	var total int64
 	if err := q.from().Count(&total).Error; err != nil {
 		return nil, err
@@ -590,10 +593,10 @@ func (q clientQuery) onlineEmails(onlines []string) ([]string, int, error) {
 	count := 0
 	for _, batch := range chunkStrings(onlines, sqlInChunk) {
 		var page []string
-		if err := q.db.Model(&model.ClientRecord{}).
-			Where("COALESCE(enable, FALSE) = TRUE AND email IN ?", batch).
-			Order("id ASC").
-			Pluck("email", &page).Error; err != nil {
+		if err := q.owned(q.db.Table("clients AS c")).
+			Where(sqlClientEnabled+" = TRUE AND c.email IN ?", batch).
+			Order("c.id ASC").
+			Pluck("c.email", &page).Error; err != nil {
 			return nil, 0, err
 		}
 		count += len(page)
