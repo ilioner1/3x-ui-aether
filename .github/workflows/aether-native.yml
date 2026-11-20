@@ -12,6 +12,7 @@ on:
       - frontend/scripts/smoke-aether-import.mjs
       - scripts/smoke-delegated-panel.py
       - frontend/src/hooks/useClients.ts
+      - frontend/src/pages/clients/ClientFormModal.tsx
       - internal/web/controller/server.go
 permissions:
   contents: read

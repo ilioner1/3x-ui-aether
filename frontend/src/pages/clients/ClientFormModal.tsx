@@ -1000,7 +1000,6 @@ export default function ClientFormModal({
                         onChange={handleInboundChange}
                         options={delegatedInboundOptions}
                         placeholder={t('pages.clients.selectInbound')}
-                        maxTagCount="responsive"
                       />
                     </Form.Item>
                   </>
