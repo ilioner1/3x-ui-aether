@@ -1956,6 +1956,23 @@ func (s *SettingService) BuildSubURIBase(host string) string {
 	return fmt.Sprintf("%s://%s:%d", scheme, subDomain, subPort)
 }
 
+// StandardSubscriptionURI returns the configured public subscription prefix.
+func (s *SettingService) StandardSubscriptionURI(host string) (string, error) {
+	enabled, err := s.GetSubEnable()
+	if err != nil || !enabled {
+		return "", err
+	}
+	uri, err := s.GetSubURI()
+	if err != nil || uri != "" {
+		return uri, err
+	}
+	path, err := s.GetSubPath()
+	if err != nil {
+		return "", err
+	}
+	return s.BuildSubURIBase(host) + path, nil
+}
+
 func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 	type settingFunc func() (any, error)
 	settings := map[string]settingFunc{

@@ -48,17 +48,21 @@ try {
   await delegate.getByRole('button', { name: 'Add Clients', exact: true }).click();
   const clientForm = delegate.getByRole('dialog');
   await clientForm.getByRole('textbox').first().fill('delegated-browser-client');
-  const inboundPicker = clientForm.getByRole('combobox');
-  await inboundPicker.click();
-  await delegate.getByRole('option', { name: /Delegated smoke VLESS/ }).waitFor({ state: 'attached' });
-  await inboundPicker.press('ArrowDown');
-  await inboundPicker.press('Enter');
+  await clientForm.getByRole('button', { name: 'Select all', exact: true }).click();
   await clientForm.getByRole('spinbutton').fill('1');
   const created = delegate.waitForResponse((response) =>
     response.url().endsWith('/delegate/api/clients/add') && response.request().method() === 'POST',
   );
   await clientForm.getByRole('button', { name: 'Create', exact: true }).click();
-  if (!(await (await created).json()).success) throw new Error('Delegate form could not create a client');
+  const createResponse = await created;
+  const result = await createResponse.json();
+  const submitted = createResponse.request().postDataJSON();
+  if (!result.success || !result.obj?.subscriptionUrl || submitted.inboundIds.length !== 2) {
+    throw new Error('Delegate select-all form did not create a subscription for both assigned inbounds');
+  }
+  const subscription = delegate.getByRole('dialog', { name: 'Subscription info' });
+  await subscription.getByText(result.obj.subscriptionUrl, { exact: true }).waitFor();
+  await subscription.getByRole('button', { name: 'OK', exact: true }).click();
   const clientRow = delegate.getByRole('row').filter({ hasText: 'delegated-browser-client' });
   const enabled = clientRow.getByRole('switch');
   await enabled.waitFor();

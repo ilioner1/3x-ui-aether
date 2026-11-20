@@ -1,4 +1,5 @@
 """Exercise a delegated client against a real installed Xray."""
+import base64
 import http.cookiejar
 import json
 import os
@@ -17,14 +18,20 @@ api = helpers["api"]
 helpers["wait_for_panel"]()
 root = helpers["BASE"].removesuffix("/panel/api")
 password = "integration-delegate-only"
-port = helpers["free_port"]()
-inbound = api("/inbounds/add", body={
-    "remark": "Delegated smoke VLESS", "enable": True, "listen": "127.0.0.1",
-    "port": port, "protocol": "vless",
-    "settings": '{"clients":[],"decryption":"none"}',
-    "streamSettings": '{"network":"tcp","security":"none"}',
-    "sniffing": "{}",
-})
+def add_inbound(remark):
+    return api("/inbounds/add", body={
+        "remark": remark, "enable": True, "listen": "127.0.0.1",
+        "port": helpers["free_port"](), "protocol": "vless",
+        "settings": '{"clients":[],"decryption":"none"}',
+        "streamSettings": '{"network":"tcp","security":"none"}',
+        "sniffing": "{}",
+    })
+
+inbound = add_inbound("Delegated smoke VLESS")
+second_inbound = add_inbound("Delegated smoke VLESS 2")
+ungranted = add_inbound("Unassigned smoke VLESS")
+port = inbound["port"]
+assigned = [inbound["id"], second_inbound["id"]]
 
 def browser():
     jar = http.cookiejar.CookieJar()
@@ -37,7 +44,7 @@ def get(web, path):
 def post(web, path, csrf_page, fields):
     csrf = re.search(r'name="_csrf" value="([^"]+)"|name="csrf-token" content="([^"]+)"', csrf_page)
     token = csrf.group(1) or csrf.group(2)
-    values = urllib.parse.urlencode({**fields, "_csrf": token}).encode()
+    values = urllib.parse.urlencode({**fields, "_csrf": token}, doseq=True).encode()
     request = urllib.request.Request(root + path, data=values, headers={
         "Content-Type": "application/x-www-form-urlencoded",
     })
@@ -52,7 +59,7 @@ if not json.loads(logged_in)["success"]:
     raise RuntimeError("Master login failed")
 admin_page = get(master, "/panel/delegated-admins")
 admin_page = post(master, "/panel/delegated-admins/group", admin_page, {
-    "name": "Smoke group", "inbound": str(inbound["id"]),
+    "name": "Smoke group", "inbound": assigned,
 })
 with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
     group = db.execute("SELECT id FROM delegated_groups WHERE name = 'Smoke group'").fetchone()[0]
@@ -81,17 +88,38 @@ def client_write(path, fields):
         "Content-Type": "application/json", "X-CSRF-Token": token,
     })
     with delegate.open(request, timeout=40) as response:
-        if not json.load(response)["success"]:
-            raise RuntimeError("Delegate client write failed")
+        return json.load(response)
 
-client_write("add", {"client": {"comment": "delegated-live-client", "enable": True}, "inboundIds": [inbound["id"]]})
+rejected = client_write("add", {
+    "client": {"comment": "ungranted-client", "enable": True},
+    "inboundIds": [inbound["id"], ungranted["id"]],
+})
+if rejected["success"]:
+    raise RuntimeError("Mixed granted and ungranted inbounds were accepted")
+
+created = client_write("add", {
+    "client": {"comment": "delegated-live-client", "enable": True},
+    "inboundIds": assigned,
+})
+if not created["success"] or not created["obj"].get("subscriptionUrl"):
+    raise RuntimeError("Delegate could not create a multi-inbound client with a subscription")
+request = urllib.request.Request(created["obj"]["subscriptionUrl"], headers={"User-Agent": "v2rayNG/1.10"})
+with browser().open(request, timeout=30) as response:
+    subscription = response.read().decode().strip()
+if "vless://" not in subscription:
+    subscription = base64.b64decode(subscription + "=" * (-len(subscription) % 4)).decode()
+ports = {urllib.parse.urlsplit(line).port for line in subscription.splitlines() if line.startswith("vless://")}
+if ports != {port, second_inbound["port"]}:
+    raise RuntimeError("Subscription did not contain exactly the two granted inbounds")
+print("Delegated subscription loaded with both granted inbounds", flush=True)
 with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
     owner = db.execute("SELECT id FROM delegated_admins WHERE username = 'smoke-delegate'").fetchone()[0]
     (email,) = db.execute(
         "SELECT c.email FROM delegated_clients d JOIN clients c ON c.id = d.client_id WHERE d.admin_id = ?",
         (owner,),
     ).fetchone()
-client_write("update/" + email, {"totalGB": 1 << 29})
+if not client_write("update/" + email, {"totalGB": 1 << 29})["success"]:
+    raise RuntimeError("Delegate client quota write failed")
 with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
     client_quota = db.execute("SELECT total_gb FROM clients WHERE email = ?", (email,)).fetchone()[0]
     if client_quota != 1 << 29:

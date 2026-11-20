@@ -274,6 +274,9 @@ export default function ClientFormModal({
   const delayedStart = useWatch({ control: methods.control, name: 'delayedStart' });
   const delayedDays = useWatch({ control: methods.control, name: 'delayedDays' });
   const expiryDate = useWatch({ control: methods.control, name: 'expiryDate' });
+  const delegatedInboundOptions = inbounds
+    .filter((inbound) => inbound.enable)
+    .map((inbound) => ({ label: inbound.remark || inbound.tag, value: inbound.id }));
   const enable = useWatch({ control: methods.control, name: 'enable' });
   const flow = useWatch({ control: methods.control, name: 'flow' });
   const reverseTag = useWatch({ control: methods.control, name: 'reverseTag' });
@@ -718,7 +721,7 @@ export default function ClientFormModal({
     if (isDelegatedPanel) {
       const comment = (isEdit ? values.comment : values.email).trim();
       const totalGB = resolveTotalBytes(client ? (client.totalGB ?? 0) : null, values.totalGB);
-      if (!comment || (!isEdit && values.inboundIds.length !== 1)) {
+      if (!comment || (!isEdit && values.inboundIds.length === 0)) {
         messageApi.error(t('validation.invalid'));
         return;
       }
@@ -984,16 +987,20 @@ export default function ClientFormModal({
                       htmlFor={`${uid}-delegate-inbound`}
                       required
                     >
+                      <SelectAllClearButtons
+                        options={delegatedInboundOptions}
+                        value={inboundIds}
+                        onChange={handleInboundChange}
+                      />
                       <Select
                         id={`${uid}-delegate-inbound`}
-                        value={inboundIds[0]}
-                        onChange={(id: number) => methods.setValue('inboundIds', [id])}
-                        options={inbounds
-                          .filter((inbound) => inbound.enable)
-                          .map((inbound) => ({
-                            label: inbound.remark || inbound.tag,
-                            value: inbound.id,
-                          }))}
+                        mode="multiple"
+                        tagRender={selectTagRender}
+                        value={inboundIds}
+                        onChange={handleInboundChange}
+                        options={delegatedInboundOptions}
+                        placeholder={t('pages.clients.selectInbound')}
+                        maxTagCount="responsive"
                       />
                     </Form.Item>
                   </>

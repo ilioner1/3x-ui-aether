@@ -23,7 +23,7 @@ func (a *delegatedController) registerPanel(root *gin.RouterGroup, csrf gin.Hand
 	api := root.Group("/api", a.requireDelegate, csrf)
 	api.GET("/csrf-token", (&XUIController{}).csrfToken)
 	api.GET("/server/status", (&ServerController{}).status)
-	api.POST("/setting/defaultSettings", func(c *gin.Context) { jsonObj(c, gin.H{"pageSize": 25}, nil) })
+	api.POST("/setting/defaultSettings", a.panelDefaults)
 	api.GET("/inbounds/list/slim", a.panelInbounds)
 	api.GET("/inbounds/options", a.panelInboundOptions)
 	api.GET("/clients/list/paged", a.panelClients)
@@ -208,7 +208,15 @@ func (a *delegatedController) panelSubLinks(c *gin.Context) {
 	(&ClientController{}).getSubLinks(c)
 }
 
-const maxDelegatedClientQuota = 1_000_000 * delegateGiB
+func (a *delegatedController) panelDefaults(c *gin.Context) {
+	uri, err := (&service.SettingService{}).StandardSubscriptionURI(c.Request.Host)
+	jsonObj(c, gin.H{"pageSize": 25, "subEnable": uri != "", "subURI": uri}, err)
+}
+
+const (
+	maxDelegatedClientQuota = 1_000_000 * delegateGiB
+	maxDelegatedInbounds    = 500
+)
 
 func (a *delegatedController) panelCreateClient(c *gin.Context) {
 	var body struct {
@@ -220,9 +228,9 @@ func (a *delegatedController) panelCreateClient(c *gin.Context) {
 		} `json:"client"`
 		InboundIDs []int `json:"inboundIds"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || len(body.InboundIDs) != 1 ||
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.InboundIDs) == 0 ||
 		body.Client.TotalGB < 0 || body.Client.TotalGB > maxDelegatedClientQuota {
-		pureJsonMsg(c, http.StatusBadRequest, false, "Select one inbound and enter a valid client quota.")
+		pureJsonMsg(c, http.StatusBadRequest, false, "Select at least one inbound and enter a valid client quota.")
 		return
 	}
 	label := delegateName(body.Client.Comment, 100)
@@ -233,8 +241,17 @@ func (a *delegatedController) panelCreateClient(c *gin.Context) {
 		pureJsonMsg(c, http.StatusBadRequest, false, "Enter a client name.")
 		return
 	}
-	err := a.addOwnedClient(panelDelegate(c), body.InboundIDs[0], label, body.Client.TotalGB, body.Client.Enable)
-	jsonObj(c, nil, err)
+	subID, err := a.addOwnedClient(panelDelegate(c), body.InboundIDs, label, body.Client.TotalGB, body.Client.Enable)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+	uri, _ := (&service.SettingService{}).StandardSubscriptionURI(c.Request.Host)
+	if uri != "" && subID != "" {
+		jsonObj(c, gin.H{"subscriptionUrl": uri + subID}, nil)
+		return
+	}
+	jsonObj(c, nil, nil)
 }
 
 func (a *delegatedController) panelUpdateClient(c *gin.Context) {

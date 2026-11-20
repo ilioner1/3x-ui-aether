@@ -1017,7 +1017,21 @@ export default function ClientsPage() {
       if (!meta.isEdit) {
         const createMsg = await create(payload);
         if (!createMsg?.success) return createMsg;
-        if (!isDelegatedPanel && meta.email && meta.externalLinks.length > 0) {
+        if (isDelegatedPanel) {
+          const result = createMsg.obj as { subscriptionUrl?: string } | undefined;
+          if (result?.subscriptionUrl) {
+            modal.info({
+              title: t('subscription.title'),
+              content: (
+                <Typography.Paragraph copyable={{ text: result.subscriptionUrl }}>
+                  {result.subscriptionUrl}
+                </Typography.Paragraph>
+              ),
+            });
+          }
+          return createMsg;
+        }
+        if (meta.email && meta.externalLinks.length > 0) {
           const r = await setExternalLinks(meta.email, meta.externalLinks);
           if (!r?.success) return r;
         }
@@ -1041,7 +1055,7 @@ export default function ClientsPage() {
       if (!r?.success) return r;
       return updateMsg;
     },
-    [create, update, attach, detach, setExternalLinks],
+    [create, update, attach, detach, setExternalLinks, modal, t],
   );
 
   const pageClass = useMemo(() => {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -219,7 +220,11 @@ func allowedDelegatedInbounds(db *gorm.DB, groupID int64) *gorm.DB {
 		Where("g.group_id = ? AND inbounds.enable = ?", groupID, true)
 }
 
-func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inbound int, label string, quota int64, enable bool) error {
+func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inboundIDs []int, label string, quota int64, enable bool) (string, error) {
+	inboundIDs = slices.Compact(slices.Sorted(slices.Values(inboundIDs)))
+	if len(inboundIDs) == 0 || len(inboundIDs) > maxDelegatedInbounds {
+		return "", errors.New("select up to 500 assigned inbounds")
+	}
 	db := database.GetDB()
 	owner := model.DelegatedClient{
 		AdminID:      admin.ID,
@@ -235,24 +240,24 @@ func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inbound
 			return errors.New("account quota exhausted")
 		}
 		var allowed int64
-		if err := allowedDelegatedInbounds(tx, admin.GroupID).Where("inbounds.id = ?", inbound).Count(&allowed).Error; err != nil {
+		if err := allowedDelegatedInbounds(tx, admin.GroupID).Where("inbounds.id IN ?", inboundIDs).Count(&allowed).Error; err != nil {
 			return err
 		}
-		if allowed != 1 {
+		if allowed != int64(len(inboundIDs)) {
 			return errors.New("inbound not assigned")
 		}
 		return tx.Create(&owner).Error
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	payload := service.ClientCreatePayload{
 		Client:     model.Client{Email: owner.InitialEmail, Enable: enable, Comment: label, TotalGB: quota},
-		InboundIds: []int{inbound},
+		InboundIds: inboundIDs,
 	}
 	restart, createErr := a.clients.Create(&a.inbounds, &payload)
 	var record model.ClientRecord
-	if err := db.Select("id").Where("email = ?", owner.InitialEmail).Take(&record).Error; err == nil {
+	if err := db.Select("id", "sub_id").Where("email = ?", owner.InitialEmail).Take(&record).Error; err == nil {
 		if err := db.Model(&owner).UpdateColumn("client_id", record.Id).Error; err != nil {
 			createErr = err
 		}
@@ -264,7 +269,7 @@ func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inbound
 	}
 	a.xray.SetToNeedReconcile()
 	notifyClientsChanged()
-	return createErr
+	return record.SubID, createErr
 }
 
 func (a *delegatedController) renderLinks(c *gin.Context, adminID int64) {
@@ -333,7 +338,7 @@ func (a *delegatedController) saveGroup(c *gin.Context) {
 			ids[int(id)] = true
 		}
 	}
-	if len(ids) > 500 {
+	if len(ids) > maxDelegatedInbounds {
 		a.adminsView(c, "حداکثر ۵۰۰ اینباند در یک گروه.")
 		return
 	}
