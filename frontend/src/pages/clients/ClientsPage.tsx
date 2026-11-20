@@ -1077,7 +1077,9 @@ export default function ClientsPage() {
 
   const columns = useMemo<ColumnsType<ClientRecord>>(
     () => [
-      ...(adminClients ? [{ title: 'Admin', dataIndex: 'ownerName', key: 'ownerName', width: 130 }] : []),
+      ...(adminClients
+        ? [{ title: 'Admin', dataIndex: 'ownerName', key: 'ownerName', width: 130 }]
+        : []),
       {
         title: t('pages.clients.actions'),
         key: 'actions',
@@ -1418,7 +1420,8 @@ export default function ClientsPage() {
                       hoverable
                       title={
                         <div className="card-toolbar">
-                          {adminClients && selectedRowKeys.length === 0 ? null : selectedRowKeys.length === 0 ? (
+                          {adminClients &&
+                          selectedRowKeys.length === 0 ? null : selectedRowKeys.length === 0 ? (
                             <Button
                               type="primary"
                               icon={<PlusOutlined aria-hidden />}
@@ -1540,8 +1543,18 @@ export default function ClientsPage() {
                                         },
                                       ].filter((item) => {
                                         if (!item.key) return false;
-                                        if (['export', 'resetAll', 'delDepleted', 'delOrphans'].includes(item.key)) return false;
-                                        return !adminClients || !['bulk', 'import'].includes(item.key);
+                                        if (
+                                          [
+                                            'export',
+                                            'resetAll',
+                                            'delDepleted',
+                                            'delOrphans',
+                                          ].includes(item.key)
+                                        )
+                                          return false;
+                                        return (
+                                          !adminClients || !['bulk', 'import'].includes(item.key)
+                                        );
                                       }),
                               }}
                             >

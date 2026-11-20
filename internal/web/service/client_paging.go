@@ -66,7 +66,7 @@ type ClientPageParams struct {
 	Group      string `form:"group"`
 
 	// DelegatedAdminID is set by the authenticated delegated controller.
-	DelegatedAdminID int64 `form:"-"`
+	DelegatedAdminID int64  `form:"-"`
 	OwnerScope       string `form:"scope"`
 	OwnerAdminID     int64  `form:"ownerAdminId"`
 }

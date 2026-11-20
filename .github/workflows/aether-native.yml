@@ -55,6 +55,7 @@ jobs:
           npm --prefix frontend run lint
           npm --prefix frontend run format:check
           npm --prefix frontend run typecheck
+          go test ./internal/sub -run TestSubService_InfoNode
           (cd frontend && npx vitest run --project components src/test/outbound-form-modal.test.tsx src/test/outbounds-loopback-index.test.tsx -t Aether)
           (cd frontend && npx vitest run --project unit src/test/aether-outbound.test.ts)
           go test ./internal/aether ./internal/util/link

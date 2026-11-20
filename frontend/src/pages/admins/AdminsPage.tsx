@@ -23,6 +23,7 @@ import {
 } from 'antd';
 import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 
+import { selectTagRender } from '@/components/form';
 import AppSidebar from '@/layouts/AppSidebar';
 import { useTheme } from '@/hooks/useTheme';
 import { HttpUtil, SizeFormatter } from '@/utils';
@@ -170,16 +171,14 @@ export default function AdminsPage() {
         <Layout className="content-shell">
           <Layout.Content className="content-area">
             <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-              {data.isError && (
-                <Result status="error" title={data.error.message} />
-              )}
+              {data.isError && <Result status="error" title={data.error.message} />}
               <Card
                 title={reports ? 'Admin Reports' : 'Admins'}
                 extra={
                   !reports && (
                     <Button
                       type="primary"
-                      icon={<PlusOutlined />}
+                      icon={<PlusOutlined aria-hidden />}
                       disabled={groups.length === 0}
                       onClick={() => editAccount(null)}
                     >
@@ -217,10 +216,14 @@ export default function AdminsPage() {
                       render: (_, item) => (
                         <Space orientation="vertical" style={{ width: '100%' }}>
                           <span>
-                            {SizeFormatter.sizeFormat(item.usedBytes)} / {SizeFormatter.sizeFormat(item.quotaBytes)}
+                            {SizeFormatter.sizeFormat(item.usedBytes)} /{' '}
+                            {SizeFormatter.sizeFormat(item.quotaBytes)}
                           </span>
                           <Progress
-                            percent={Math.min(100, Math.round((item.usedBytes / item.quotaBytes) * 100))}
+                            percent={Math.min(
+                              100,
+                              Math.round((item.usedBytes / item.quotaBytes) * 100),
+                            )}
                             size="small"
                           />
                         </Space>
@@ -233,11 +236,18 @@ export default function AdminsPage() {
                         <Space wrap>
                           <Link to={`/admins-clients?admin=${item.id}`}>Clients</Link>
                           {!reports && (
-                            <Typography.Text copyable={{ text: new URL(`${base}delegate/?account=${encodeURIComponent(item.username)}`, window.location.origin).href }}>
+                            <Typography.Text
+                              copyable={{
+                                text: new URL(
+                                  `${base}delegate/?account=${encodeURIComponent(item.username)}`,
+                                  window.location.origin,
+                                ).href,
+                              }}
+                            >
                               Login link
                             </Typography.Text>
                           )}
-                          <Button icon={<EditOutlined />} onClick={() => editAccount(item)}>
+                          <Button icon={<EditOutlined aria-hidden />} onClick={() => editAccount(item)}>
                             Edit
                           </Button>
                           <Popconfirm
@@ -245,7 +255,7 @@ export default function AdminsPage() {
                             description="The quota limit stays the same."
                             onConfirm={() => resetTraffic(item)}
                           >
-                            <Button icon={<ReloadOutlined />}>Reset traffic</Button>
+                            <Button icon={<ReloadOutlined aria-hidden />}>Reset traffic</Button>
                           </Popconfirm>
                         </Space>
                       ),
@@ -257,7 +267,7 @@ export default function AdminsPage() {
                 <Card
                   title="Admin groups"
                   extra={
-                    <Button icon={<PlusOutlined />} onClick={() => editGroup(null)}>
+                    <Button icon={<PlusOutlined aria-hidden />} onClick={() => editGroup(null)}>
                       Add group
                     </Button>
                   }
@@ -277,8 +287,8 @@ export default function AdminsPage() {
                               .filter((grant) => grant.GroupID === item.ID)
                               .map((grant) => (
                                 <Tag key={grant.InboundID}>
-                                  {inbounds.find((inbound) => inbound.id === grant.InboundID)?.remark ||
-                                    grant.InboundID}
+                                  {inbounds.find((inbound) => inbound.id === grant.InboundID)
+                                    ?.remark || grant.InboundID}
                                 </Tag>
                               ))}
                           </Space>
@@ -288,7 +298,7 @@ export default function AdminsPage() {
                         title: 'Actions',
                         key: 'actions',
                         render: (_, item) => (
-                          <Button icon={<EditOutlined />} onClick={() => editGroup(item)}>
+                          <Button icon={<EditOutlined aria-hidden />} onClick={() => editGroup(item)}>
                             Edit group
                           </Button>
                         ),
@@ -303,6 +313,7 @@ export default function AdminsPage() {
       </Layout>
       <Modal
         open={account !== undefined}
+        forceRender
         title={account ? 'Edit admin' : 'Add admin'}
         okText="Save"
         confirmLoading={saving}
@@ -329,6 +340,7 @@ export default function AdminsPage() {
       </Modal>
       <Modal
         open={group !== undefined}
+        forceRender
         title={group ? 'Edit group' : 'Add group'}
         okText="Save"
         confirmLoading={saving}
@@ -342,6 +354,7 @@ export default function AdminsPage() {
           <Form.Item label="Inbounds" name="inbound">
             <Select
               mode="multiple"
+              tagRender={selectTagRender}
               options={inbounds.map((item) => ({
                 value: item.id,
                 label: item.remark || item.protocol + ' #' + item.id,

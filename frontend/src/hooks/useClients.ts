@@ -222,8 +222,13 @@ export function useClients(options: UseClientsOptions = {}) {
   }, []);
 
   const listQuery = useQuery({
-    queryKey: [...keys.clients.list(query ?? DEFAULT_QUERY), options.ownerScope, options.ownerAdminId],
-    queryFn: () => fetchClientPage(query ?? DEFAULT_QUERY, options.ownerScope, options.ownerAdminId),
+    queryKey: [
+      ...keys.clients.list(query ?? DEFAULT_QUERY),
+      options.ownerScope,
+      options.ownerAdminId,
+    ],
+    queryFn: () =>
+      fetchClientPage(query ?? DEFAULT_QUERY, options.ownerScope, options.ownerAdminId),
     enabled: withList && query !== null,
     staleTime: Infinity,
     // List is sorted/paged server-side, so the WS patch can't add new or
@@ -275,8 +280,9 @@ export function useClients(options: UseClientsOptions = {}) {
 
   const inbounds = inboundOptionsQuery.data ?? [];
   const onlines =
-    (isDelegatedPanel || options.ownerScope ? listQuery.data?.summary?.online : onlinesQuery.data) ??
-    EMPTY_ONLINES;
+    (isDelegatedPanel || options.ownerScope
+      ? listQuery.data?.summary?.online
+      : onlinesQuery.data) ?? EMPTY_ONLINES;
 
   const defaults = defaultsQuery.data ?? {};
   const subSettings: SubSettings = useMemo(
