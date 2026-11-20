@@ -247,7 +247,10 @@ export default function AdminsPage() {
                               Login link
                             </Typography.Text>
                           )}
-                          <Button icon={<EditOutlined aria-hidden />} onClick={() => editAccount(item)}>
+                          <Button
+                            icon={<EditOutlined aria-hidden />}
+                            onClick={() => editAccount(item)}
+                          >
                             Edit
                           </Button>
                           <Popconfirm
@@ -298,7 +301,10 @@ export default function AdminsPage() {
                         title: 'Actions',
                         key: 'actions',
                         render: (_, item) => (
-                          <Button icon={<EditOutlined aria-hidden />} onClick={() => editGroup(item)}>
+                          <Button
+                            icon={<EditOutlined aria-hidden />}
+                            onClick={() => editGroup(item)}
+                          >
                             Edit group
                           </Button>
                         ),
