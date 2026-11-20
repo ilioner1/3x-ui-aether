@@ -4,11 +4,13 @@ import { useMemo } from 'react';
 import { HttpUtil } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { HostListSchema, type HostRecord } from '@/schemas/api/host';
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { keys } from '@/api/queryKeys';
 
 export type { HostRecord };
 
 async function fetchHosts(): Promise<HostRecord[]> {
+  if (isDelegatedPanel) return [];
   const msg = await HttpUtil.get('/panel/api/hosts/list', undefined, { silent: true });
   if (!msg?.success) throw new Error(msg?.msg || 'Failed to fetch hosts');
   const validated = parseMsg(msg, HostListSchema, 'hosts/list');

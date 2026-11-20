@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { HttpUtil, Msg } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { keys } from '@/api/queryKeys';
@@ -244,7 +245,7 @@ export function useClients(options: UseClientsOptions = {}) {
       const validated = parseMsg(msg, OnlinesSchema, 'clients/onlines');
       return Array.isArray(validated.obj) ? validated.obj : [];
     },
-    enabled: withList,
+    enabled: withList && !isDelegatedPanel,
     staleTime: Infinity,
   });
 
@@ -264,7 +265,10 @@ export function useClients(options: UseClientsOptions = {}) {
   const transitioning = listQuery.isPlaceholderData;
 
   const inbounds = inboundOptionsQuery.data ?? [];
-  const onlines = useMemo(() => onlinesQuery.data ?? [], [onlinesQuery.data]);
+  const onlines = useMemo(
+    () => (isDelegatedPanel ? listQuery.data?.summary.online : onlinesQuery.data) ?? [],
+    [listQuery.data?.summary.online, onlinesQuery.data],
+  );
 
   const defaults = defaultsQuery.data ?? {};
   const subSettings: SubSettings = useMemo(

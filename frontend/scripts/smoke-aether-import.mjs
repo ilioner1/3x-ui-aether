@@ -10,6 +10,12 @@ try {
   const delegate = await browser.newPage({ locale: 'en-US' });
   delegate.setDefaultTimeout(25000);
   delegate.on('pageerror', (error) => console.error('Delegate page error:', error.message));
+  delegate.on('response', (response) => {
+    const path = new URL(response.url()).pathname;
+    if (response.status() >= 400 && path.includes('/delegate/api/')) {
+      console.error('Delegate API response:', response.status(), path.split('/delegate/api/')[1]);
+    }
+  });
   await delegate.goto(`${base}/delegate/?account=smoke-delegate`);
   const username = delegate.locator('[autocomplete="username"]');
   await username.waitFor();
