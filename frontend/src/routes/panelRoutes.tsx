@@ -52,7 +52,9 @@ const ALL_PANEL_ROUTES: PanelRoute[] = [
 ];
 
 export const PANEL_ROUTES = isDelegatedPanel
-  ? ALL_PANEL_ROUTES.filter(({ path }) => path === '/' || path === '/inbounds' || path === '/clients')
+  ? ALL_PANEL_ROUTES.filter(
+      ({ path }) => path === '/' || path === '/inbounds' || path === '/clients',
+    )
   : ALL_PANEL_ROUTES;
 
 export const PANEL_ROUTE_PATHS = PANEL_ROUTES.map((route) => route.path);

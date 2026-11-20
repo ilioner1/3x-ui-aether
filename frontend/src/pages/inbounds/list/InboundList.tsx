@@ -383,10 +383,14 @@ export default function InboundList({
             columns={columns}
             dataSource={visibleInbounds}
             rowKey={(r) => r.id}
-            rowSelection={isDelegatedPanel ? undefined : {
-              selectedRowKeys,
-              onChange: (keys: Key[]) => setSelectedRowKeys(keys as number[]),
-            }}
+            rowSelection={
+              isDelegatedPanel
+                ? undefined
+                : {
+                    selectedRowKeys,
+                    onChange: (keys: Key[]) => setSelectedRowKeys(keys as number[]),
+                  }
+            }
             pagination={paginationFor(visibleInbounds)}
             scroll={{ x: tableScrollX }}
             style={{ marginTop: 10 }}

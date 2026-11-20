@@ -53,7 +53,9 @@ export default function LoginPage() {
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const methods = useForm<LoginForm>({
     defaultValues: {
-      username: isDelegatedPanel ? new URLSearchParams(window.location.search).get('account')?.slice(0, 64) ?? '' : '',
+      username: isDelegatedPanel
+        ? (new URLSearchParams(window.location.search).get('account')?.slice(0, 64) ?? '')
+        : '',
       password: '',
       twoFactorCode: '',
     },
@@ -87,7 +89,8 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const msg = await HttpUtil.post(isDelegatedPanel ? '/delegate/login' : '/login', values);
-      if (msg.success) window.location.href = basePath + (isDelegatedPanel ? 'delegate/panel/' : 'panel/');
+      if (msg.success)
+        window.location.href = basePath + (isDelegatedPanel ? 'delegate/panel/' : 'panel/');
     } finally {
       setSubmitting(false);
     }

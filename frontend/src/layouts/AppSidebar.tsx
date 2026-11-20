@@ -196,10 +196,12 @@ export default function AppSidebar() {
         icon: route.icon,
         title: t(route.titleKey),
       })),
-      ...(!isDelegatedPanel ? [
-        { key: '/delegated-admins', icon: SafetyOutlined, title: 'Admins' },
-        { key: '/delegated-reports', icon: ReadOutlined, title: 'Admin Reports' },
-      ] : []),
+      ...(!isDelegatedPanel
+        ? [
+            { key: '/delegated-admins', icon: SafetyOutlined, title: 'Admins' },
+            { key: '/delegated-reports', icon: ReadOutlined, title: 'Admin Reports' },
+          ]
+        : []),
       { key: LOGOUT_KEY, icon: LogoutOutlined, title: t('logout') },
     ],
     [t],

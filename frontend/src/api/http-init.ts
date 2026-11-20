@@ -39,11 +39,14 @@ function readMetaToken(): string | null {
 
 async function fetchCsrfToken(): Promise<string | null> {
   try {
-    const res = await fetch(basePathPrefix + (isDelegatedPanel ? '/delegate/api/csrf-token' : CSRF_TOKEN_PATH), {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    });
+    const res = await fetch(
+      basePathPrefix + (isDelegatedPanel ? '/delegate/api/csrf-token' : CSRF_TOKEN_PATH),
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      },
+    );
     if (!res.ok) return null;
     const json = (await res.json()) as { success?: boolean; obj?: unknown } | null;
     return json?.success && typeof json.obj === 'string' ? json.obj : null;
@@ -147,7 +150,9 @@ async function performFetch(
 
   const query = encodeForm(options.params);
   const scopedUrl = isDelegatedPanel
-    ? url.replace(/^\/panel\/(api\/|csrf-token(?=$))/u, '/delegate/$1').replace(/^\/delegate\/csrf-token$/u, '/delegate/api/csrf-token')
+    ? url
+        .replace(/^\/panel\/(api\/|csrf-token(?=$))/u, '/delegate/$1')
+        .replace(/^\/delegate\/csrf-token$/u, '/delegate/api/csrf-token')
     : url;
   const fullUrl = basePathPrefix + appendQuery(scopedUrl, query);
   const signal = requestSignal(options);
@@ -190,7 +195,11 @@ export async function httpRequest(
   if (res.status === 401) {
     if (!sessionExpired) {
       sessionExpired = true;
-      window.location.replace(isDelegatedPanel ? `${basePathPrefix}/delegate/` : window.X_UI_BASE_PATH || basePathPrefix || '/');
+      window.location.replace(
+        isDelegatedPanel
+          ? `${basePathPrefix}/delegate/`
+          : window.X_UI_BASE_PATH || basePathPrefix || '/',
+      );
     }
     return new Promise<HttpResponse>(() => {});
   }

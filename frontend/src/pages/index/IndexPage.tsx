@@ -219,9 +219,7 @@ export default function IndexPage() {
                     />
                   )}
 
-                  {!isDelegatedPanel && (
-                    <SponsorSlot slot="dashboard" />
-                  )}
+                  {!isDelegatedPanel && <SponsorSlot slot="dashboard" />}
 
                   {health && (
                     <div className="ov-health" style={{ color: health.color }}>

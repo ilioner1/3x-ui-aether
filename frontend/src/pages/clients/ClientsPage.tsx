@@ -1833,16 +1833,20 @@ export default function ClientsPage() {
                                               ),
                                               onClick: () => onShowQr(row.email),
                                             },
-                                            ...(!isDelegatedPanel ? [{
-                                              key: 'reset',
-                                              label: (
-                                                <>
-                                                  <RetweetOutlined aria-hidden />{' '}
-                                                  {t('pages.inbounds.resetTraffic')}
-                                                </>
-                                              ),
-                                              onClick: () => onResetTraffic(row.email),
-                                            },] : []),
+                                            ...(!isDelegatedPanel
+                                              ? [
+                                                  {
+                                                    key: 'reset',
+                                                    label: (
+                                                      <>
+                                                        <RetweetOutlined aria-hidden />{' '}
+                                                        {t('pages.inbounds.resetTraffic')}
+                                                      </>
+                                                    ),
+                                                    onClick: () => onResetTraffic(row.email),
+                                                  },
+                                                ]
+                                              : []),
                                             {
                                               key: 'edit',
                                               label: (
@@ -1852,16 +1856,20 @@ export default function ClientsPage() {
                                               ),
                                               onClick: () => onEdit(row.email),
                                             },
-                                            ...(!isDelegatedPanel ? [{
-                                              key: 'delete',
-                                              danger: true,
-                                              label: (
-                                                <>
-                                                  <DeleteOutlined aria-hidden /> {t('delete')}
-                                                </>
-                                              ),
-                                              onClick: () => onDelete(row.email),
-                                            },] : []),
+                                            ...(!isDelegatedPanel
+                                              ? [
+                                                  {
+                                                    key: 'delete',
+                                                    danger: true,
+                                                    label: (
+                                                      <>
+                                                        <DeleteOutlined aria-hidden /> {t('delete')}
+                                                      </>
+                                                    ),
+                                                    onClick: () => onDelete(row.email),
+                                                  },
+                                                ]
+                                              : []),
                                           ],
                                         }}
                                       >
