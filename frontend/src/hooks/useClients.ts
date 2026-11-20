@@ -81,6 +81,7 @@ export interface ClientQueryParams {
   group?: string;
 }
 
+const EMPTY_ONLINES: string[] = [];
 const DEFAULT_QUERY: ClientQueryParams = { page: 1, pageSize: 25 };
 const DEFAULT_SUMMARY: ClientsSummary = {
   total: 0,
@@ -265,10 +266,8 @@ export function useClients(options: UseClientsOptions = {}) {
   const transitioning = listQuery.isPlaceholderData;
 
   const inbounds = inboundOptionsQuery.data ?? [];
-  const onlines = useMemo(
-    () => (isDelegatedPanel ? listQuery.data?.summary.online : onlinesQuery.data) ?? [],
-    [listQuery.data?.summary.online, onlinesQuery.data],
-  );
+  const onlines =
+    (isDelegatedPanel ? listQuery.data?.summary.online : onlinesQuery.data) ?? EMPTY_ONLINES;
 
   const defaults = defaultsQuery.data ?? {};
   const subSettings: SubSettings = useMemo(

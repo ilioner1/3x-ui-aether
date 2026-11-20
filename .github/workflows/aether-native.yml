@@ -11,6 +11,7 @@ on:
       - scripts/update-aether-panel.sh
       - frontend/scripts/smoke-aether-import.mjs
       - scripts/smoke-delegated-panel.py
+      - frontend/src/hooks/useClients.ts
       - internal/web/controller/server.go
 permissions:
   contents: read
