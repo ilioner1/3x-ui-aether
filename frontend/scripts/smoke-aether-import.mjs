@@ -24,6 +24,13 @@ try {
       throw new Error(`Restricted menu displayed ${name}`);
     }
   }
+  const forbidden = await delegate.request.post(`${base}/panel/api/server/restartXrayService`, {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    maxRedirects: 0,
+  });
+  if (![401, 403, 404].includes(forbidden.status())) {
+    throw new Error('Delegate reached the master restart endpoint');
+  }
   await delegate.goto(`${base}/delegate/panel/inbounds`);
   await delegate.getByText('Delegated smoke VLESS', { exact: true }).first().waitFor();
   if (await delegate.getByRole('button', { name: 'Add Inbound', exact: true }).count()) {

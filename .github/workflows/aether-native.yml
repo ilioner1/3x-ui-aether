@@ -50,6 +50,8 @@ jobs:
           bash -n x-ui.sh
           bash -n scripts/update-aether-panel.sh
           npm --prefix frontend ci
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
           (cd frontend && npx vitest run --project components src/test/outbound-form-modal.test.tsx src/test/outbounds-loopback-index.test.tsx -t Aether)
           (cd frontend && npx vitest run --project unit src/test/aether-outbound.test.ts)
           go test ./internal/aether ./internal/util/link

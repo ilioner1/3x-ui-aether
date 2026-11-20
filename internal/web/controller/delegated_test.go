@@ -57,6 +57,8 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	create(&fc)
 	create(&gc)
 	create(&model.ClientInbound{ClientId: f.Id, InboundId: 100})
+	create(&model.Inbound{Id: 100, Remark: "granted-inbound", Protocol: model.VLESS, Port: 24443, Tag: "test-in-1", StreamSettings: `{"network":"tcp","privateKey":"secret-key"}`})
+	create(&model.Inbound{Id: 101, Remark: "ungranted-inbound", Protocol: model.VLESS, Port: 24444, Tag: "test-in-2"})
 	create(&model.DelegatedInboundGrant{GroupID: group.ID, InboundID: 100})
 
 	e := gin.New()
@@ -114,6 +116,11 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	status, page := read("/delegate/api/clients/list/paged")
 	if status != http.StatusOK || !strings.Contains(page, f.Email) || strings.Contains(page, g.Email) {
 		t.Fatal("delegate API ownership isolation failed")
+	}
+	if status, inbounds := read("/delegate/api/inbounds/list/slim"); status != http.StatusOK ||
+		!strings.Contains(inbounds, "granted-inbound") || strings.Contains(inbounds, "ungranted-inbound") ||
+		strings.Contains(inbounds, "secret-key") {
+		t.Fatal("delegate API exposed an ungranted inbound or its private settings")
 	}
 	if status, _ := read("/master-only-check"); status == http.StatusNoContent {
 		t.Fatal("delegate session was accepted as master")

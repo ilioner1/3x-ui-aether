@@ -969,8 +969,9 @@ export default function ClientFormModal({
                     <FormField name="email" label={t('pages.clients.email')} required>
                       <Input maxLength={100} />
                     </FormField>
-                    <Form.Item label={t('pages.clients.attachedInbounds')} required>
+                    <Form.Item label={t('pages.clients.attachedInbounds')} htmlFor={`${uid}-delegate-inbound`} required>
                       <Select
+                        id={`${uid}-delegate-inbound`}
                         value={inboundIds[0]}
                         onChange={(id: number) => methods.setValue('inboundIds', [id])}
                         options={inbounds.filter((inbound) => inbound.enable).map((inbound) => ({
@@ -984,8 +985,8 @@ export default function ClientFormModal({
                 <FormField name="totalGB" label={t('pages.clients.totalGB')}>
                   <InputNumber min={0} max={1000000} style={{ width: '100%' }} />
                 </FormField>
-                <Form.Item label={t('pages.clients.enabled')}>
-                  <Switch checked={enable} onChange={(next) => methods.setValue('enable', next)} />
+                <Form.Item label={t('pages.clients.enabled')} htmlFor={`${uid}-delegate-enabled`}>
+                  <Switch id={`${uid}-delegate-enabled`} checked={enable} onChange={(next) => methods.setValue('enable', next)} />
                 </Form.Item>
               </>
             ) : (
