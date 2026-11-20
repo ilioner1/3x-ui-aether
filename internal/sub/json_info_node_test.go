@@ -63,7 +63,7 @@ func TestSubJson_InfoNode_Active(t *testing.T) {
 		t.Fatalf("GetJson: %v", err)
 	}
 
-	if !strings.Contains(out, "user1@test.com|📊8.00GB") {
+	if !strings.Contains(out, "📊8.00GB|user1@test.com") {
 		t.Fatalf("expected dummy remark in JSON remarks, got:\n%s", out)
 	}
 	if !strings.Contains(out, `"protocol": "socks"`) && !strings.Contains(out, `"protocol":"socks"`) {

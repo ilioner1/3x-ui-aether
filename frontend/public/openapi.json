@@ -2294,6 +2294,9 @@
             "example": 0,
             "type": "integer"
           },
+          "ownerName": {
+            "type": "string"
+          },
           "reset": {
             "example": 0,
             "type": "integer"
@@ -8644,6 +8647,7 @@
                         ],
                         "limitHwid": 0,
                         "limitIp": 0,
+                        "ownerName": "",
                         "reset": 0,
                         "resetDay": 0,
                         "resetMax": 0,

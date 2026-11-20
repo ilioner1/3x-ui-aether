@@ -2268,6 +2268,9 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": 0,
         "type": "integer"
       },
+      "ownerName": {
+        "type": "string"
+      },
       "reset": {
         "example": 0,
         "type": "integer"

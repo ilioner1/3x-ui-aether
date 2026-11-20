@@ -722,7 +722,7 @@ export default function ClientFormModal({
       const comment = (isEdit ? values.comment : values.email).trim();
       const totalGB = resolveTotalBytes(client ? (client.totalGB ?? 0) : null, values.totalGB);
       if (!comment || (!isEdit && values.inboundIds.length === 0)) {
-        messageApi.error(t('validation.invalid'));
+        messageApi.error(t('somethingWentWrong'));
         return;
       }
       const payload = { comment, totalGB, enable: values.enable };

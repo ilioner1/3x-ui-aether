@@ -371,7 +371,7 @@ export default function InboundList({
                           </Dropdown>
                         </div>
                       )}
-                      {isDelegatedPanel && <Tag>{record.enable ? t('enable') : t('disable')}</Tag>}
+                      {isDelegatedPanel && <Tag>{record.enable ? t('enable') : t('disabled')}</Tag>}
                     </div>
                   </div>
                 ))}
