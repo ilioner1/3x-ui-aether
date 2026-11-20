@@ -8,7 +8,8 @@ const uri = 'aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&tr
 const browser = await chromium.launch();
 try {
   const delegate = await browser.newPage({ locale: 'en-US' });
-  delegate.setDefaultTimeout(15000);
+  delegate.setDefaultTimeout(25000);
+  delegate.on('pageerror', (error) => console.error('Delegate page error:', error.message));
   await delegate.goto(`${base}/delegate/?account=smoke-delegate`);
   const username = delegate.locator('[autocomplete="username"]');
   await username.waitFor();

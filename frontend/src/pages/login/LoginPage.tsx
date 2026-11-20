@@ -47,7 +47,7 @@ export default function LoginPage() {
     setMessageInstance(messageApi);
   }, [messageApi]);
 
-  const [fetched, setFetched] = useState(false);
+  const [fetched, setFetched] = useState(isDelegatedPanel);
   const [submitting, setSubmitting] = useState(false);
   const [twoFactorEnable, setTwoFactorEnable] = useState(false);
   const [headlineIndex, setHeadlineIndex] = useState(0);
