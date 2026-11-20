@@ -50,16 +50,18 @@ export const ClientRowActions = memo(function ClientRowActions({
           onClick={() => onShowQr(email)}
         />
       </Tooltip>
-      <Tooltip title={t('pages.clients.clientInfo')}>
-        <Button
-          size="small"
-          type="text"
-          style={ICON_BUTTON_STYLE}
-          icon={<InfoCircleOutlined aria-hidden />}
-          aria-label={t('pages.clients.clientInfo')}
-          onClick={() => onShowInfo(email)}
-        />
-      </Tooltip>
+      {!isDelegatedPanel && (
+        <Tooltip title={t('pages.clients.clientInfo')}>
+          <Button
+            size="small"
+            type="text"
+            style={ICON_BUTTON_STYLE}
+            icon={<InfoCircleOutlined aria-hidden />}
+            aria-label={t('pages.clients.clientInfo')}
+            onClick={() => onShowInfo(email)}
+          />
+        </Tooltip>
+      )}
       {!isDelegatedPanel && (
         <Tooltip title={t('pages.inbounds.resetTraffic')}>
           <Button

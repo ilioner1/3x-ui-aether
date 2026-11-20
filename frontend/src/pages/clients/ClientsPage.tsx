@@ -1801,16 +1801,18 @@ export default function ClientsPage() {
                                       </Tag>
                                     )}
                                     <div className="card-actions">
-                                      <Tooltip title={t('pages.clients.clientInfo')}>
-                                        <InfoCircleOutlined
-                                          className="row-action-trigger"
-                                          role="button"
-                                          tabIndex={0}
-                                          aria-label={t('pages.clients.clientInfo')}
-                                          onClick={() => onShowInfo(row.email)}
-                                          onKeyDown={activateOnKey(() => onShowInfo(row.email))}
-                                        />
-                                      </Tooltip>
+                                      {!isDelegatedPanel && (
+                                        <Tooltip title={t('pages.clients.clientInfo')}>
+                                          <InfoCircleOutlined
+                                            className="row-action-trigger"
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label={t('pages.clients.clientInfo')}
+                                            onClick={() => onShowInfo(row.email)}
+                                            onKeyDown={activateOnKey(() => onShowInfo(row.email))}
+                                          />
+                                        </Tooltip>
+                                      )}
                                       <Switch
                                         checked={!!row.enable}
                                         size="small"
