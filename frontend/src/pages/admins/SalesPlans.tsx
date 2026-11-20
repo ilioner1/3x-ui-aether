@@ -24,7 +24,9 @@ export default function SalesPlans() {
     queryKey: ['delegated-sales-plans'],
     queryFn: async () => {
       const result = await HttpUtil.get<{ plans: Plan[] }>(API, undefined, { silent: true });
-      if (!result.success || !result.obj) throw new Error(result.msg || 'Could not load sales plans');
+      if (!result.success || !result.obj) {
+        throw new Error(result.msg || 'Could not load sales plans');
+      }
       return result.obj.plans;
     },
   });

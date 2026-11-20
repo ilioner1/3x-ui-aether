@@ -60,6 +60,10 @@ func TestDelegatedSalesProvisioningAndScope(t *testing.T) {
 	if res := call(http.MethodPut, "/delegate-sales/v1/settings", secret, fmt.Sprintf(`{"groupId":%d}`, group.ID)); res.Code != http.StatusOK {
 		t.Fatalf("could not select a sales group: %s", res.Body.String())
 	}
+	wrongPlanQuota := fmt.Sprintf(`{"reference":"stale-invoice","planId":%d,"quotaGiB":100,"password":"test-password-56d6c"}`, plan.ID)
+	if res := call(http.MethodPost, "/delegate-sales/v1/orders", secret, wrongPlanQuota); res.Code != http.StatusConflict {
+		t.Fatalf("a changed plan quota should require reviewing the order: %d", res.Code)
+	}
 	body := fmt.Sprintf(`{"reference":"paid-invoice-1","planId":%d,"quotaGiB":150,"password":"test-password-56d6c"}`, plan.ID)
 	for i := 0; i < 2; i++ {
 		res := call(http.MethodPost, "/delegate-sales/v1/orders", secret, body)
