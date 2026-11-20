@@ -35,8 +35,9 @@ def get(web, path):
         return response.read().decode()
 
 def post(web, path, csrf_page, fields):
-    csrf = re.search(r'name="_csrf" value="([^"]+)"', csrf_page).group(1)
-    values = urllib.parse.urlencode({**fields, "_csrf": csrf}).encode()
+    csrf = re.search(r'name="_csrf" value="([^"]+)"|name="csrf-token" content="([^"]+)"', csrf_page)
+    token = csrf.group(1) or csrf.group(2)
+    values = urllib.parse.urlencode({**fields, "_csrf": token}).encode()
     request = urllib.request.Request(root + path, data=values, headers={
         "Content-Type": "application/x-www-form-urlencoded",
     })
@@ -65,21 +66,36 @@ if not match:
     raise RuntimeError("New admin has no personal login link")
 with delegate.open(urllib.parse.urljoin(root + "/", match.group(1)), timeout=30) as response:
     login_page = response.read().decode()
-if 'name="username" value="smoke-delegate"' not in login_page:
-    raise RuntimeError("Personal login link did not prefill the account")
-page = post(delegate, "/delegate/login", login_page, {"username": "smoke-delegate", "password": password})
-request_id = re.search(r'name="request" value="([^"]+)"', page).group(1)
-created = post(delegate, "/delegate/clients", page, {
-    "request": request_id, "label": "delegated-live-client", "inbound": inbound["id"],
-})
-if "delegated-live-client" not in created:
-    raise RuntimeError("Delegate could not create a client")
+if 'name="x-ui-role" content="delegate"' not in login_page:
+    raise RuntimeError("Personal login link did not serve the delegated x-ui login")
+login = post(delegate, "/delegate/login", login_page, {"username": "smoke-delegate", "password": password})
+if not json.loads(login)["success"]:
+    raise RuntimeError("Delegate login failed")
+shell = get(delegate, "/delegate/panel/clients")
+if 'name="x-ui-role" content="delegate"' not in shell:
+    raise RuntimeError("Delegate clients did not serve the restricted x-ui shell")
+token = json.loads(get(delegate, "/delegate/api/csrf-token"))["obj"]
+
+def client_write(path, fields):
+    request = urllib.request.Request(root + "/delegate/api/clients/" + path, data=json.dumps(fields).encode(), headers={
+        "Content-Type": "application/json", "X-CSRF-Token": token,
+    })
+    with delegate.open(request, timeout=40) as response:
+        if not json.load(response)["success"]:
+            raise RuntimeError("Delegate client write failed")
+
+client_write("add", {"client": {"comment": "delegated-live-client", "enable": True}, "inboundIds": [inbound["id"]]})
 with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
     owner = db.execute("SELECT id FROM delegated_admins WHERE username = 'smoke-delegate'").fetchone()[0]
     (email,) = db.execute(
         "SELECT c.email FROM delegated_clients d JOIN clients c ON c.id = d.client_id WHERE d.admin_id = ?",
         (owner,),
     ).fetchone()
+client_write("update/" + email, {"totalGB": 1 << 29})
+with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
+    client_quota = db.execute("SELECT total_gb FROM clients WHERE email = ?", (email,)).fetchone()[0]
+    if client_quota != 1 << 29:
+        raise RuntimeError("Delegate could not edit its own client's quota")
 exported = next(
     link for link in helpers["exported_links"](api("/inbounds/allLinks", "GET"))
     if link.port == port

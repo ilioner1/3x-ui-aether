@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -714,6 +715,25 @@ export default function ClientFormModal({
 
   async function onSubmit() {
     const values = methods.getValues();
+    if (isDelegatedPanel) {
+      const comment = (isEdit ? values.comment : values.email).trim();
+      const totalGB = resolveTotalBytes(client ? (client.totalGB ?? 0) : null, values.totalGB);
+      if (!comment || (!isEdit && values.inboundIds.length !== 1)) {
+        messageApi.error(t('validation.invalid'));
+        return;
+      }
+      const payload = { comment, totalGB, enable: values.enable };
+      setSubmitting(true);
+      try {
+        const msg = isEdit && client
+          ? await save(payload, { isEdit: true, email: client.email, attach: [], detach: [], externalLinks: [] })
+          : await save({ client: payload, inboundIds: values.inboundIds }, { isEdit: false, email: '', externalLinks: [] });
+        if (msg?.success) close();
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     const unchangedLegacyKeepAlive =
       isEdit &&
       typeof client?.keepAlive === 'number' &&
@@ -938,6 +958,37 @@ export default function ClientFormModal({
       >
         <FormProvider {...methods}>
           <Form layout="vertical">
+            {isDelegatedPanel ? (
+              <>
+                {isEdit ? (
+                  <FormField name="comment" label={t('pages.clients.comment')} required>
+                    <Input maxLength={100} />
+                  </FormField>
+                ) : (
+                  <>
+                    <FormField name="email" label={t('pages.clients.email')} required>
+                      <Input maxLength={100} />
+                    </FormField>
+                    <Form.Item label={t('pages.clients.attachedInbounds')} required>
+                      <Select
+                        value={inboundIds[0]}
+                        onChange={(id: number) => methods.setValue('inboundIds', [id])}
+                        options={inbounds.filter((inbound) => inbound.enable).map((inbound) => ({
+                          label: inbound.remark || inbound.tag,
+                          value: inbound.id,
+                        }))}
+                      />
+                    </Form.Item>
+                  </>
+                )}
+                <FormField name="totalGB" label={t('pages.clients.totalGB')}>
+                  <InputNumber min={0} max={1000000} style={{ width: '100%' }} />
+                </FormField>
+                <Form.Item label={t('pages.clients.enabled')}>
+                  <Switch checked={enable} onChange={(next) => methods.setValue('enable', next)} />
+                </Form.Item>
+              </>
+            ) : (
             <Tabs
               defaultActiveKey="basic"
               items={[
@@ -1710,6 +1761,7 @@ export default function ClientFormModal({
                 },
               ]}
             />
+            )}
           </Form>
         </FormProvider>
       </Modal>

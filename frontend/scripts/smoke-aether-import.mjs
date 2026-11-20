@@ -7,6 +7,33 @@ const uri = 'aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&tr
 
 const browser = await chromium.launch();
 try {
+  const delegate = await browser.newPage({ locale: 'en-US' });
+  delegate.setDefaultTimeout(15000);
+  await delegate.goto(`${base}/delegate/?account=smoke-delegate`);
+  const username = delegate.locator('[autocomplete="username"]');
+  await username.waitFor();
+  if ((await username.inputValue()) !== 'smoke-delegate') throw new Error('Delegate login name was not prefilled');
+  await delegate.locator('[autocomplete="current-password"]').fill('integration-delegate-only');
+  await Promise.all([
+    delegate.waitForURL('**/delegate/panel/'),
+    delegate.locator('button[type="submit"]').click(),
+  ]);
+  await delegate.getByRole('menuitem', { name: 'Overview', exact: true }).first().waitFor();
+  for (const name of ['Outbounds', 'Settings', 'Admins']) {
+    if (await delegate.getByRole('menuitem', { name, exact: true }).count()) {
+      throw new Error(`Restricted menu displayed ${name}`);
+    }
+  }
+  await delegate.goto(`${base}/delegate/panel/inbounds`);
+  await delegate.getByText('Delegated smoke VLESS', { exact: true }).first().waitFor();
+  if (await delegate.getByRole('button', { name: 'Add Inbound', exact: true }).count()) {
+    throw new Error('Delegate could see the Add Inbound action');
+  }
+  await delegate.goto(`${base}/delegate/panel/clients`);
+  await delegate.getByText('delegated-live-client', { exact: true }).first().waitFor();
+  console.log('Browser verified the delegated x-ui pages and restricted navigation');
+  await delegate.close();
+
   const page = await browser.newPage({ locale: 'en-US' });
   page.setDefaultTimeout(15000);
   await page.goto(`${base}/`);

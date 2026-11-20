@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -51,7 +52,11 @@ export default function LoginPage() {
   const [twoFactorEnable, setTwoFactorEnable] = useState(false);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const methods = useForm<LoginForm>({
-    defaultValues: { username: '', password: '', twoFactorCode: '' },
+    defaultValues: {
+      username: isDelegatedPanel ? new URLSearchParams(window.location.search).get('account')?.slice(0, 64) ?? '' : '',
+      password: '',
+      twoFactorCode: '',
+    },
   });
   const [lang, setLang] = useState<string>(() => LanguageManager.getLanguage());
 
@@ -67,6 +72,7 @@ export default function LoginPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (isDelegatedPanel) return;
       const msg = await HttpUtil.post('/getTwoFactorEnable');
       if (cancelled) return;
       if (msg.success) setTwoFactorEnable(!!msg.obj);
@@ -80,8 +86,8 @@ export default function LoginPage() {
   const onSubmit = useCallback(async (values: LoginForm) => {
     setSubmitting(true);
     try {
-      const msg = await HttpUtil.post('/login', values);
-      if (msg.success) window.location.href = basePath + 'panel/';
+      const msg = await HttpUtil.post(isDelegatedPanel ? '/delegate/login' : '/login', values);
+      if (msg.success) window.location.href = basePath + (isDelegatedPanel ? 'delegate/panel/' : 'panel/');
     } finally {
       setSubmitting(false);
     }

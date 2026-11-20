@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -63,6 +63,7 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 	e.Use(sessions.Sessions("delegate-test", cookie.NewStore([]byte("delegated-integration-secret"))))
 	e.Use(func(c *gin.Context) { c.Set("base_path", "/"); c.Next() })
 	(&delegatedController{}).register(e.Group(""))
+	e.GET("/test-token", (&XUIController{}).csrfToken)
 	e.GET("/master-only-check", (&BaseController{}).checkLogin, func(c *gin.Context) { c.Status(http.StatusNoContent) })
 	e.GET("/test-master", func(c *gin.Context) {
 		var master model.User
@@ -96,44 +97,61 @@ func TestDelegatedAccountIsolationAndQuota(t *testing.T) {
 		defer r.Body.Close()
 		return r.StatusCode
 	}
-	csrfPattern := regexp.MustCompile(`name="_csrf" value="([^"]+)"`)
-	tokenFrom := func(body string) string {
-		t.Helper()
-		m := csrfPattern.FindStringSubmatch(body)
-		if len(m) != 2 {
-			t.Fatal("CSRF token not rendered")
-		}
-		return m[1]
+	_, tokenPage := read("/test-token")
+	var token struct {
+		Obj string `json:"obj"`
 	}
-
-	_, page := read("/delegate/?account=first-delegate")
-	if !strings.Contains(page, `name="username" value="first-delegate"`) {
-		t.Fatal("personal login link did not prefill the username")
+	if err := json.Unmarshal([]byte(tokenPage), &token); err != nil || token.Obj == "" {
+		t.Fatalf("test session token was not available: %v", err)
 	}
 	if status := send("/delegate/login", url.Values{
 		"username": {"first-delegate"},
 		"password": {"test-password"},
-		"_csrf":    {tokenFrom(page)},
-	}); status != http.StatusSeeOther {
+		"_csrf":    {token.Obj},
+	}); status != http.StatusOK {
 		t.Fatalf("delegate login status %d", status)
 	}
-	_, page = read("/delegate/")
-	if !strings.Contains(page, "FIRST-PRIVATE") || strings.Contains(page, "SECOND-PRIVATE") {
-		t.Fatal("delegate portal ownership isolation failed")
+	status, page := read("/delegate/api/clients/list/paged")
+	if status != http.StatusOK || !strings.Contains(page, f.Email) || strings.Contains(page, g.Email) {
+		t.Fatal("delegate API ownership isolation failed")
 	}
 	if status, _ := read("/master-only-check"); status == http.StatusNoContent {
 		t.Fatal("delegate session was accepted as master")
 	}
-	if status, _ := read("/delegate/links/" + strconv.FormatInt(gc.ID, 10)); status != http.StatusNotFound {
-		t.Fatalf("cross-account link access returned %d", status)
+	if status, _ := read("/delegate/api/clients/get/" + g.Email); status != http.StatusNotFound {
+		t.Fatalf("cross-account client lookup returned %d", status)
 	}
-	if status := send("/delegate/clients", url.Values{
-		"_csrf":   {tokenFrom(page)},
-		"label":   {"not granted"},
-		"inbound": {"999"},
-		"request": {"ffde0ed0-1ef0-4c0e-a232-aedb7beaa831"},
-	}); status != http.StatusOK {
-		t.Fatalf("ungranted create status %d", status)
+	if status := send("/delegate/api/server/restartXrayService", nil); status != http.StatusNotFound {
+		t.Fatalf("delegate could call restart route: %d", status)
+	}
+	_, tokenPage = read("/delegate/api/csrf-token")
+	if err := json.Unmarshal([]byte(tokenPage), &token); err != nil || token.Obj == "" {
+		t.Fatalf("delegate session token was not available: %v", err)
+	}
+	postClient := func(path, body string) (int, string) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, server.URL+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-CSRF-Token", token.Obj)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := web.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		payload, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.StatusCode, string(payload)
+	}
+	if status, _ := postClient("/delegate/api/clients/update/"+g.Email, `{"enable":false}`); status != http.StatusNotFound {
+		t.Fatalf("cross-account client write returned %d", status)
+	}
+	if _, response := postClient("/delegate/api/clients/add", `{"client":{"comment":"not granted","enable":true},"inboundIds":[999]}`); !strings.Contains(response, `"success":false`) {
+		t.Fatalf("ungranted create response: %s", response)
 	}
 	var count int64
 	if err := db.Model(&model.DelegatedClient{}).Count(&count).Error; err != nil || count != 2 {

@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useCallback, useMemo, useState, type Key } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -222,23 +223,27 @@ export default function InboundList({
       hoverable
       title={
         <Space>
-          <Button
-            type="primary"
-            onClick={onAddInbound}
-            icon={<PlusOutlined aria-hidden />}
-            aria-label={t('pages.inbounds.addInbound')}
-          >
-            {!isMobile && t('pages.inbounds.addInbound')}
-          </Button>
-          <Dropdown trigger={['click']} menu={generalActionsMenu}>
-            <Button
-              type="primary"
-              icon={<MenuOutlined aria-hidden />}
-              aria-label={t('pages.inbounds.generalActions')}
-            >
-              {!isMobile && t('pages.inbounds.generalActions')}
-            </Button>
-          </Dropdown>
+          {!isDelegatedPanel && (
+            <>
+              <Button
+                type="primary"
+                onClick={onAddInbound}
+                icon={<PlusOutlined aria-hidden />}
+                aria-label={t('pages.inbounds.addInbound')}
+              >
+                {!isMobile && t('pages.inbounds.addInbound')}
+              </Button>
+              <Dropdown trigger={['click']} menu={generalActionsMenu}>
+                <Button
+                  type="primary"
+                  icon={<MenuOutlined aria-hidden />}
+                  aria-label={t('pages.inbounds.generalActions')}
+                >
+                  {!isMobile && t('pages.inbounds.generalActions')}
+                </Button>
+              </Dropdown>
+            </>
+          )}
           {showNodeFilter && (
             <Select
               value={nodeFilter}
@@ -292,74 +297,81 @@ export default function InboundList({
               </div>
             ) : (
               <>
-                <div className="card-bulk-bar">
-                  <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onChange={(e) => selectAll(e.target.checked)}
-                  >
-                    {t('pages.inbounds.selectAll')}
-                  </Checkbox>
-                  {selectedRowKeys.length > 0 && (
-                    <span className="bulk-count">{selectedRowKeys.length}</span>
-                  )}
-                </div>
+                {!isDelegatedPanel && (
+                  <div className="card-bulk-bar">
+                    <Checkbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={(e) => selectAll(e.target.checked)}
+                    >
+                      {t('pages.inbounds.selectAll')}
+                    </Checkbox>
+                    {selectedRowKeys.length > 0 && (
+                      <span className="bulk-count">{selectedRowKeys.length}</span>
+                    )}
+                  </div>
+                )}
                 {visibleInbounds.map((record) => (
                   <div
                     key={record.id}
                     className={`inbound-card${selectedRowKeys.includes(record.id) ? ' is-selected' : ''}`}
                   >
                     <div className="card-head">
-                      <Checkbox
-                        checked={selectedRowKeys.includes(record.id)}
-                        onChange={(e) => toggleSelect(record.id, e.target.checked)}
-                      />
+                      {!isDelegatedPanel && (
+                        <Checkbox
+                          checked={selectedRowKeys.includes(record.id)}
+                          onChange={(e) => toggleSelect(record.id, e.target.checked)}
+                        />
+                      )}
                       <span className="card-id">#{record.id}</span>
                       <span className="tag-name">
                         <span className="inbound-remark">{record.remark}</span>
                         <HostRemarksSuffix remarks={hostRemarksByInboundId.get(record.id) ?? []} />
                       </span>
-                      <div className="card-actions">
-                        <Tooltip title={t('pages.inbounds.inboundInfo')}>
-                          <InfoCircleOutlined
-                            className="row-action-trigger"
-                            role="button"
-                            tabIndex={0}
-                            aria-label={t('pages.inbounds.inboundInfo')}
-                            onClick={() => setStatsRecord(record)}
-                            onKeyDown={activateOnKey(() => setStatsRecord(record))}
-                          />
-                        </Tooltip>
-                        <Switch
-                          aria-label={t('pages.inbounds.enable')}
-                          checked={record.enable}
-                          size="small"
-                          onChange={(next) => onSwitchEnable(record, next)}
-                        />
-                        <Dropdown
-                          trigger={['click']}
-                          placement="bottomRight"
-                          menu={{
-                            items: buildRowActionsMenu({
-                              record,
-                              subEnable,
-                              t,
-                              isMobile: true,
-                              hasClients: (clientCount[record.id]?.clients || 0) > 0,
-                            }),
-                            onClick: ({ key }) =>
-                              onRowAction({ key: key as RowAction, dbInbound: record }),
-                          }}
-                        >
-                          <Button
-                            type="text"
+                      {!isDelegatedPanel && (
+                        <div className="card-actions">
+                          <Tooltip title={t('pages.inbounds.inboundInfo')}>
+                            <InfoCircleOutlined
+                              className="row-action-trigger"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={t('pages.inbounds.inboundInfo')}
+                              onClick={() => setStatsRecord(record)}
+                              onKeyDown={activateOnKey(() => setStatsRecord(record))}
+                            />
+                          </Tooltip>
+                          <Switch
+                            aria-label={t('pages.inbounds.enable')}
+                            checked={record.enable}
                             size="small"
-                            className="row-action-trigger"
-                            icon={<MoreOutlined aria-hidden />}
-                            aria-label={t('more')}
+                            onChange={(next) => onSwitchEnable(record, next)}
                           />
-                        </Dropdown>
-                      </div>
+                          <Dropdown
+                            trigger={['click']}
+                            placement="bottomRight"
+                            menu={{
+                              items: buildRowActionsMenu({
+                                record,
+                                subEnable,
+                                t,
+                                isMobile: true,
+                                hasClients: (clientCount[record.id]?.clients || 0) > 0,
+                              }),
+                              onClick: ({ key }) =>
+                                onRowAction({ key: key as RowAction, dbInbound: record }),
+                            }}
+                          >
+                            <Button
+                              type="text"
+                              size="small"
+                              className="row-action-trigger"
+                              icon={<MoreOutlined aria-hidden />}
+                              aria-label={t('more')}
+                            />
+                          </Dropdown>
+                        </div>
+                      )}
+                      {isDelegatedPanel && <Tag>{record.enable ? t('enable') : t('disable')}</Tag>}
                     </div>
                   </div>
                 ))}
@@ -371,7 +383,7 @@ export default function InboundList({
             columns={columns}
             dataSource={visibleInbounds}
             rowKey={(r) => r.id}
-            rowSelection={{
+            rowSelection={isDelegatedPanel ? undefined : {
               selectedRowKeys,
               onChange: (keys: Key[]) => setSelectedRowKeys(keys as number[]),
             }}

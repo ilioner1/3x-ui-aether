@@ -14,19 +14,11 @@
 <header><nav><strong dir="ltr">3x-ui</strong>
 {{if or (eq .Page "admins") (eq .Page "reports")}}
 <a href="{{.Base}}panel/">پنل اصلی</a><a href="{{.Base}}panel/delegated-admins">ادمین‌ها و گروه‌ها</a><a href="{{.Base}}panel/delegated-reports">گزارش ادمین‌ها</a>
-{{else if eq .Page "portal"}}<strong>{{.Username}}</strong><form method="post" action="{{.Base}}delegate/logout"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button>خروج</button></form>
 {{end}}
 </nav></header>
 <main>
 {{if .Error}}<p role="alert" class="warn">{{.Error}}</p>{{end}}
-{{if eq .Page "login"}}
-<section class="card login"><h1>ورود ادمین</h1>
-<form method="post" action="{{.Base}}delegate/login">
-<input type="hidden" name="_csrf" value="{{.CSRF}}">
-<label>نام کاربری <input name="username" value="{{.Username}}" maxlength="64" autocomplete="username" required></label>
-<label>رمز عبور <input name="password" type="password" autocomplete="current-password" required></label>
-<button>ورود</button></form></section>
-{{else if eq .Page "admins"}}
+{{if eq .Page "admins"}}
 <h1>ادمین‌ها و گروه‌ها</h1>
 <p>لینک ورود ادمین‌ها <a href="{{.Base}}delegate/"><bdi>{{.Base}}delegate/</bdi></a></p>
 <div class="grid">
@@ -56,22 +48,12 @@
 <section class="card table"><table><thead><tr><th>حساب</th><th>سقف (GiB)</th><th>مصرف (GiB)</th><th>گزارش</th><th>ورود ادمین</th></tr></thead><tbody>
 {{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a> {{if not .Enabled}}(تعلیق){{end}}</td><td>{{gib .QuotaBytes}}</td><td>{{gib .UsedBytes}}</td><td><a href="{{$.Base}}panel/delegated-reports?admin={{.ID}}">مشاهدهٔ کلاینت‌ها</a></td><td><a href="{{$.Base}}delegate/?account={{.Username}}">لینک ورود</a></td></tr>{{end}}
 </tbody></table></section>
-{{else if or (eq .Page "portal") (eq .Page "reports")}}
-{{if eq .Page "portal"}}
-<h1>کلاینت‌های من</h1>
-<section class="card"><p>مصرف <bdi>{{gib .Admin.UsedBytes}} / {{gib .Admin.QuotaBytes}} GiB</bdi></p>
-{{if ge .Admin.UsedBytes .Admin.QuotaBytes}}<p class="warn">سهمیهٔ حساب تمام شده.</p>{{else}}
-<form method="post" action="{{.Base}}delegate/clients">
-<input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="request" value="{{.Request}}">
-<label>نام کلاینت <input name="label" maxlength="100" required></label>
-<label>اینباند <select name="inbound" required><option value="">انتخاب اینباند</option>{{range .Inbounds}}<option value="{{.Id}}"><bdi>{{.Remark}} · {{.Protocol}}</bdi></option>{{end}}</select></label>
-<button>ساخت کلاینت</button></form>{{end}}</section>
-{{else}}
+{{else if eq .Page "reports"}}
 <h1>گزارش ادمین‌ها</h1>
 <section class="card table"><table><thead><tr><th>ادمین</th><th>مصرف (GiB)</th><th>سقف (GiB)</th><th>وضعیت</th></tr></thead><tbody>
 {{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a></td><td>{{gib .UsedBytes}}</td><td>{{gib .QuotaBytes}}</td><td>{{if not .Enabled}}تعلیق{{else if ge .UsedBytes .QuotaBytes}}سهمیه تمام شده{{else}}فعال{{end}}</td></tr>{{end}}
-</tbody></table></section>{{end}}
-{{if or .Selected .Admin.ID}}<section class="card table"><table><thead><tr><th>کلاینت</th><th>مصرف (GiB)</th><th>کانفیگ</th>{{if eq .Page "reports"}}<th>مدیریت</th>{{end}}</tr></thead><tbody>
+</tbody></table></section>
+{{if .Selected}}<section class="card table"><table><thead><tr><th>کلاینت</th><th>مصرف (GiB)</th><th>کانفیگ</th>{{if eq .Page "reports"}}<th>مدیریت</th>{{end}}</tr></thead><tbody>
 {{range .Clients}}<tr><td><bdi>{{.Label}}</bdi></td><td>{{gib .UsedBytes}}</td>
 <td><a href="{{$.Base}}{{if eq $.Page "reports"}}panel/delegated-reports{{else}}delegate{{end}}/links/{{.ID}}">لینک‌ها</a></td>
 {{if eq $.Page "reports"}}<td><form method="post" action="{{$.Base}}panel/delegated-reports/client"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input name="label" aria-label="نام کلاینت" value="{{.Label}}" required><label>سقف کلاینت (GiB) <input type="number" min="0" max="1000000" name="clientQuota" value="{{quota .TotalGB}}" aria-label="سقف کلاینت"></label><label><input type="checkbox" name="enable" value="1" {{if .Enabled}}checked{{end}}> فعال</label><button>ذخیره</button></form></td>{{end}}</tr>

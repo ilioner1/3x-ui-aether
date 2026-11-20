@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { Spin } from 'antd';
 
+import { panelRoutePrefix } from '@/lib/panel-access';
 import PanelLayout from '@/layouts/PanelLayout';
 import { PANEL_ROUTES } from '@/routes/panelRoutes';
 
@@ -40,7 +41,7 @@ export const routes: RouteObject[] = [
 function computeBasename() {
   const raw = (typeof window !== 'undefined' && window.X_UI_BASE_PATH) || '/';
   const trimmed = raw.replace(/\/+$/, '');
-  return `${trimmed}/panel`;
+  return `${trimmed}${panelRoutePrefix}`;
 }
 
 export const router = createBrowserRouter(routes, {

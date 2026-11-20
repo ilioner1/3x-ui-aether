@@ -60,7 +60,6 @@ type delegatedView struct {
 	Base     string
 	CSRF     string
 	Page     string
-	Username string
 	Admin    model.DelegatedAdmin
 	Admins   []model.DelegatedAdmin
 	Groups   []model.DelegatedGroup
@@ -72,7 +71,6 @@ type delegatedView struct {
 	Selected int64
 	Next     int64
 	Error    string
-	Request  string
 }
 
 func (a *delegatedController) register(g *gin.RouterGroup) {
@@ -81,8 +79,7 @@ func (a *delegatedController) register(g *gin.RouterGroup) {
 	root.GET("/", a.portal)
 	root.POST("/login", middleware.MaxBodyBytes(16<<10), csrf, a.login)
 	root.POST("/logout", middleware.MaxBodyBytes(16<<10), csrf, a.logout)
-	root.POST("/clients", middleware.MaxBodyBytes(16<<10), csrf, a.createClient)
-	root.GET("/links/:id", a.links)
+	a.registerPanel(root, csrf)
 	master := g.Group("/panel")
 	master.Use(a.checkLogin, csrf)
 	master.GET("/delegated-admins", a.admins)
@@ -101,11 +98,6 @@ func (a *delegatedController) render(c *gin.Context, view delegatedView) {
 		return
 	}
 	view.CSRF = token
-	if view.Username == "" {
-		if user := session.GetLoginUser(c); user != nil {
-			view.Username = user.Username
-		}
-	}
 	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	if err := delegatedPage.Execute(c.Writer, view); err != nil {
@@ -145,7 +137,7 @@ func (a *delegatedController) login(c *gin.Context) {
 	password := c.PostForm("password")
 	remote := getRemoteIp(c)
 	if _, allowed := defaultLoginLimiter.allow(remote, username); !allowed || username == "" || len(password) > 72 {
-		a.render(c, delegatedView{Page: "login", Username: username, Error: "ورود ناموفق بود."})
+		pureJsonMsg(c, http.StatusOK, false, "ورود ناموفق بود.")
 		return
 	}
 	var admin model.DelegatedAdmin
@@ -157,7 +149,7 @@ func (a *delegatedController) login(c *gin.Context) {
 	valid := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
 	if err != nil || !valid {
 		defaultLoginLimiter.registerFailure(remote, username)
-		a.render(c, delegatedView{Page: "login", Username: username, Error: "نام کاربری یا رمز معتبر نیست."})
+		pureJsonMsg(c, http.StatusOK, false, "نام کاربری یا رمز معتبر نیست.")
 		return
 	}
 	defaultLoginLimiter.registerSuccess(remote, username)
@@ -169,7 +161,7 @@ func (a *delegatedController) login(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	c.Redirect(http.StatusSeeOther, c.GetString("base_path")+"delegate/")
+	jsonObj(c, nil, nil)
 }
 
 func (a *delegatedController) logout(c *gin.Context) {
@@ -212,12 +204,13 @@ func (a *delegatedController) readClients(c *gin.Context, view *delegatedView, i
 }
 
 func (a *delegatedController) portal(c *gin.Context) {
-	admin, ok := a.current(c)
+	_, ok := a.current(c)
 	if !ok {
-		a.render(c, delegatedView{Page: "login", Username: delegateName(c.Query("account"), 64)})
+		c.Set("delegated_panel", true)
+		serveDistPage(c, "login.html")
 		return
 	}
-	a.portalView(c, admin, "")
+	c.Redirect(http.StatusSeeOther, c.GetString("base_path")+"delegate/panel/")
 }
 
 func allowedDelegatedInbounds(db *gorm.DB, groupID int64) *gorm.DB {
@@ -226,39 +219,14 @@ func allowedDelegatedInbounds(db *gorm.DB, groupID int64) *gorm.DB {
 		Where("g.group_id = ? AND inbounds.enable = ?", groupID, true)
 }
 
-func (a *delegatedController) portalView(c *gin.Context, admin model.DelegatedAdmin, message string) {
-	view := delegatedView{Page: "portal", Username: admin.Username, Admin: admin, Error: message, Request: uuid.NewString()}
-	if err := allowedDelegatedInbounds(database.GetDB(), admin.GroupID).Select("inbounds.id", "inbounds.remark", "inbounds.protocol").Order("inbounds.id").Find(&view.Inbounds).Error; err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	if err := a.readClients(c, &view, admin.ID); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	a.render(c, view)
-}
-
-func (a *delegatedController) createClient(c *gin.Context) {
-	admin, ok := a.current(c)
-	if !ok {
-		c.Status(http.StatusUnauthorized)
-		return
-	}
-	label := delegateName(c.PostForm("label"), 100)
-	requestID, err := uuid.Parse(c.PostForm("request"))
-	inbound := delegateID(c.PostForm("inbound"))
-	if err != nil || label == "" || inbound <= 0 {
-		a.portalView(c, admin, "نام و اینباند معتبر انتخاب کن.")
-		return
-	}
+func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inbound int, label string, quota int64, enable bool) error {
 	db := database.GetDB()
 	owner := model.DelegatedClient{
 		AdminID:      admin.ID,
 		Label:        label,
-		InitialEmail: fmt.Sprintf("reseller-%d-%s", admin.ID, requestID.String()),
+		InitialEmail: fmt.Sprintf("reseller-%d-%s", admin.ID, uuid.NewString()),
 	}
-	err = db.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("enabled = ? AND session_epoch = ?", true, admin.SessionEpoch).
 			Take(&admin, admin.ID).Error; err != nil {
 			return err
@@ -276,12 +244,11 @@ func (a *delegatedController) createClient(c *gin.Context) {
 		return tx.Create(&owner).Error
 	})
 	if err != nil {
-		a.portalView(c, admin, "ساخت کلاینت انجام نشد. دسترسی، حجم حساب یا تکراری بودن درخواست رو بررسی کن.")
-		return
+		return err
 	}
 	payload := service.ClientCreatePayload{
-		Client:     model.Client{Email: owner.InitialEmail, Enable: true, Comment: label},
-		InboundIds: []int{int(inbound)},
+		Client:     model.Client{Email: owner.InitialEmail, Enable: enable, Comment: label, TotalGB: quota},
+		InboundIds: []int{inbound},
 	}
 	restart, createErr := a.clients.Create(&a.inbounds, &payload)
 	var record model.ClientRecord
@@ -297,11 +264,7 @@ func (a *delegatedController) createClient(c *gin.Context) {
 	}
 	a.xray.SetToNeedReconcile()
 	notifyClientsChanged()
-	if createErr != nil {
-		a.portalView(c, admin, "ساخت کلاینت کامل نشد. وضعیت فهرست رو بررسی کن.")
-		return
-	}
-	c.Redirect(http.StatusSeeOther, c.GetString("base_path")+"delegate/")
+	return createErr
 }
 
 func (a *delegatedController) renderLinks(c *gin.Context, adminID int64) {
@@ -318,15 +281,6 @@ func (a *delegatedController) renderLinks(c *gin.Context, adminID int64) {
 		return
 	}
 	a.render(c, delegatedView{Page: "links", Links: links, Clients: []delegatedClientRow{client}})
-}
-
-func (a *delegatedController) links(c *gin.Context) {
-	admin, ok := a.current(c)
-	if !ok {
-		c.Status(http.StatusUnauthorized)
-		return
-	}
-	a.renderLinks(c, admin.ID)
 }
 
 func (a *delegatedController) masterLinks(c *gin.Context) { a.renderLinks(c, 0) }

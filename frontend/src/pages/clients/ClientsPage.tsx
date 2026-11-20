@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
@@ -1016,14 +1017,14 @@ export default function ClientsPage() {
       if (!meta.isEdit) {
         const createMsg = await create(payload);
         if (!createMsg?.success) return createMsg;
-        if (meta.email && meta.externalLinks.length > 0) {
+        if (!isDelegatedPanel && meta.email && meta.externalLinks.length > 0) {
           const r = await setExternalLinks(meta.email, meta.externalLinks);
           if (!r?.success) return r;
         }
         return createMsg;
       }
       const updateMsg = await update(meta.email, payload);
-      if (!updateMsg?.success) return updateMsg;
+      if (!updateMsg?.success || isDelegatedPanel) return updateMsg;
       const rawEmail = (payload as { email?: unknown }).email;
       const emailKey =
         typeof rawEmail === 'string' && rawEmail.trim() ? rawEmail.trim() : meta.email;
@@ -1415,113 +1416,115 @@ export default function ClientsPage() {
                               {t('pages.clients.selectedCount', { count: selectedRowKeys.length })}
                             </Tag>
                           )}
-                          <Dropdown
-                            trigger={['click']}
-                            placement="bottomRight"
-                            menu={{
-                              items:
-                                selectedRowKeys.length > 0
-                                  ? [
-                                      {
-                                        key: 'attach',
-                                        icon: <UsergroupAddOutlined aria-hidden />,
-                                        label: t('pages.clients.attach'),
-                                        onClick: () => setBulkAttachOpen(true),
-                                      },
-                                      {
-                                        key: 'detach',
-                                        icon: <UsergroupDeleteOutlined aria-hidden />,
-                                        label: t('pages.clients.detach'),
-                                        danger: true,
-                                        onClick: () => setBulkDetachOpen(true),
-                                      },
-                                      {
-                                        key: 'addToGroup',
-                                        icon: <TagsOutlined aria-hidden />,
-                                        label: t('pages.clients.addToGroup'),
-                                        onClick: () => setBulkGroupOpen(true),
-                                      },
-                                      {
-                                        key: 'ungroup',
-                                        icon: <UngroupIcon />,
-                                        label: t('pages.clients.ungroup'),
-                                        danger: true,
-                                        onClick: onBulkUngroup,
-                                      },
-                                      { type: 'divider' as const },
-                                      {
-                                        key: 'enable',
-                                        icon: <CheckCircleOutlined aria-hidden />,
-                                        label: t('pages.clients.enable'),
-                                        onClick: () => onBulkSetEnable(true),
-                                      },
-                                      {
-                                        key: 'disable',
-                                        icon: <StopOutlined aria-hidden />,
-                                        label: t('pages.clients.disable'),
-                                        danger: true,
-                                        onClick: () => onBulkSetEnable(false),
-                                      },
-                                      {
-                                        key: 'adjust',
-                                        icon: <ClockCircleOutlined aria-hidden />,
-                                        label: t('pages.clients.adjust'),
-                                        onClick: () => setBulkAdjustOpen(true),
-                                      },
-                                      {
-                                        key: 'subLinks',
-                                        icon: <LinkOutlined aria-hidden />,
-                                        label: t('pages.clients.subLinks'),
-                                        onClick: () => setSubLinksOpen(true),
-                                      },
-                                    ]
-                                  : [
-                                      {
-                                        key: 'bulk',
-                                        icon: <UsergroupAddOutlined aria-hidden />,
-                                        label: t('pages.clients.bulk'),
-                                        onClick: () => setBulkAddOpen(true),
-                                      },
-                                      {
-                                        key: 'export',
-                                        icon: <DownloadOutlined aria-hidden />,
-                                        label: t('pages.clients.exportClients'),
-                                        onClick: onExportClients,
-                                      },
-                                      {
-                                        key: 'import',
-                                        icon: <UploadOutlined aria-hidden />,
-                                        label: t('pages.clients.importClients'),
-                                        onClick: onImportClients,
-                                      },
-                                      {
-                                        key: 'resetAll',
-                                        icon: <RetweetOutlined aria-hidden />,
-                                        label: t('pages.clients.resetAllTraffics'),
-                                        onClick: onResetAllTraffics,
-                                      },
-                                      { type: 'divider' as const },
-                                      {
-                                        key: 'delDepleted',
-                                        icon: <RestOutlined aria-hidden />,
-                                        label: t('pages.clients.delDepleted'),
-                                        danger: true,
-                                        onClick: onDelDepleted,
-                                      },
-                                      {
-                                        key: 'delOrphans',
-                                        icon: <DisconnectOutlined aria-hidden />,
-                                        label: t('pages.clients.delOrphans'),
-                                        danger: true,
-                                        onClick: onDeleteOrphans,
-                                      },
-                                    ],
-                            }}
-                          >
-                            <Button icon={<MoreOutlined aria-hidden />} aria-label={t('more')}>
-                              {!isMobile && t('more')}
-                            </Button>
-                          </Dropdown>
+                          {!isDelegatedPanel && (
+                            <Dropdown
+                              trigger={['click']}
+                              placement="bottomRight"
+                              menu={{
+                                items:
+                                  selectedRowKeys.length > 0
+                                    ? [
+                                        {
+                                          key: 'attach',
+                                          icon: <UsergroupAddOutlined aria-hidden />,
+                                          label: t('pages.clients.attach'),
+                                          onClick: () => setBulkAttachOpen(true),
+                                        },
+                                        {
+                                          key: 'detach',
+                                          icon: <UsergroupDeleteOutlined aria-hidden />,
+                                          label: t('pages.clients.detach'),
+                                          danger: true,
+                                          onClick: () => setBulkDetachOpen(true),
+                                        },
+                                        {
+                                          key: 'addToGroup',
+                                          icon: <TagsOutlined aria-hidden />,
+                                          label: t('pages.clients.addToGroup'),
+                                          onClick: () => setBulkGroupOpen(true),
+                                        },
+                                        {
+                                          key: 'ungroup',
+                                          icon: <UngroupIcon />,
+                                          label: t('pages.clients.ungroup'),
+                                          danger: true,
+                                          onClick: onBulkUngroup,
+                                        },
+                                        { type: 'divider' as const },
+                                        {
+                                          key: 'enable',
+                                          icon: <CheckCircleOutlined aria-hidden />,
+                                          label: t('pages.clients.enable'),
+                                          onClick: () => onBulkSetEnable(true),
+                                        },
+                                        {
+                                          key: 'disable',
+                                          icon: <StopOutlined aria-hidden />,
+                                          label: t('pages.clients.disable'),
+                                          danger: true,
+                                          onClick: () => onBulkSetEnable(false),
+                                        },
+                                        {
+                                          key: 'adjust',
+                                          icon: <ClockCircleOutlined aria-hidden />,
+                                          label: t('pages.clients.adjust'),
+                                          onClick: () => setBulkAdjustOpen(true),
+                                        },
+                                        {
+                                          key: 'subLinks',
+                                          icon: <LinkOutlined aria-hidden />,
+                                          label: t('pages.clients.subLinks'),
+                                          onClick: () => setSubLinksOpen(true),
+                                        },
+                                      ]
+                                    : [
+                                        {
+                                          key: 'bulk',
+                                          icon: <UsergroupAddOutlined aria-hidden />,
+                                          label: t('pages.clients.bulk'),
+                                          onClick: () => setBulkAddOpen(true),
+                                        },
+                                        {
+                                          key: 'export',
+                                          icon: <DownloadOutlined aria-hidden />,
+                                          label: t('pages.clients.exportClients'),
+                                          onClick: onExportClients,
+                                        },
+                                        {
+                                          key: 'import',
+                                          icon: <UploadOutlined aria-hidden />,
+                                          label: t('pages.clients.importClients'),
+                                          onClick: onImportClients,
+                                        },
+                                        {
+                                          key: 'resetAll',
+                                          icon: <RetweetOutlined aria-hidden />,
+                                          label: t('pages.clients.resetAllTraffics'),
+                                          onClick: onResetAllTraffics,
+                                        },
+                                        { type: 'divider' as const },
+                                        {
+                                          key: 'delDepleted',
+                                          icon: <RestOutlined aria-hidden />,
+                                          label: t('pages.clients.delDepleted'),
+                                          danger: true,
+                                          onClick: onDelDepleted,
+                                        },
+                                        {
+                                          key: 'delOrphans',
+                                          icon: <DisconnectOutlined aria-hidden />,
+                                          label: t('pages.clients.delOrphans'),
+                                          danger: true,
+                                          onClick: onDeleteOrphans,
+                                        },
+                                      ],
+                              }}
+                            >
+                              <Button icon={<MoreOutlined aria-hidden />} aria-label={t('more')}>
+                                {!isMobile && t('more')}
+                              </Button>
+                            </Dropdown>
+                          )}
                           {selectedRowKeys.length > 0 && (
                             <Button
                               danger
@@ -1707,7 +1710,7 @@ export default function ClientsPage() {
                           dataSource={sortedClients}
                           loading={transitioning}
                           rowKey="email"
-                          rowSelection={rowSelection}
+                          rowSelection={isDelegatedPanel ? undefined : rowSelection}
                           pagination={tablePagination}
                           size="small"
                           scroll={{ x: 1200 }}
@@ -1729,13 +1732,15 @@ export default function ClientsPage() {
                           <div className="client-cards">
                             {filteredClients.length > 0 && (
                               <div className="card-bulk-bar">
-                                <Checkbox
-                                  checked={allSelected}
-                                  indeterminate={someSelected}
-                                  onChange={(e) => selectAll(e.target.checked)}
-                                >
-                                  {t('pages.clients.selectAll')}
-                                </Checkbox>
+                                {!isDelegatedPanel && (
+                                  <Checkbox
+                                    checked={allSelected}
+                                    indeterminate={someSelected}
+                                    onChange={(e) => selectAll(e.target.checked)}
+                                  >
+                                    {t('pages.clients.selectAll')}
+                                  </Checkbox>
+                                )}
                                 {selectedRowKeys.length > 0 && (
                                   <span className="bulk-count">{selectedRowKeys.length}</span>
                                 )}
@@ -1773,10 +1778,12 @@ export default function ClientsPage() {
                                   className={`client-card${selectedRowKeys.includes(row.email) ? ' is-selected' : ''}`}
                                 >
                                   <div className="card-head">
-                                    <Checkbox
-                                      checked={selectedRowKeys.includes(row.email)}
-                                      onChange={(e) => toggleSelect(row.email, e.target.checked)}
-                                    />
+                                    {!isDelegatedPanel && (
+                                      <Checkbox
+                                        checked={selectedRowKeys.includes(row.email)}
+                                        onChange={(e) => toggleSelect(row.email, e.target.checked)}
+                                      />
+                                    )}
                                     {row.enable && bucket !== 'depleted' && isOnline(row.email) ? (
                                       <span className="online-dot" style={{ marginInlineEnd: 0 }} />
                                     ) : (
@@ -1826,7 +1833,7 @@ export default function ClientsPage() {
                                               ),
                                               onClick: () => onShowQr(row.email),
                                             },
-                                            {
+                                            ...(!isDelegatedPanel ? [{
                                               key: 'reset',
                                               label: (
                                                 <>
@@ -1835,7 +1842,7 @@ export default function ClientsPage() {
                                                 </>
                                               ),
                                               onClick: () => onResetTraffic(row.email),
-                                            },
+                                            },] : []),
                                             {
                                               key: 'edit',
                                               label: (
@@ -1845,7 +1852,7 @@ export default function ClientsPage() {
                                               ),
                                               onClick: () => onEdit(row.email),
                                             },
-                                            {
+                                            ...(!isDelegatedPanel ? [{
                                               key: 'delete',
                                               danger: true,
                                               label: (
@@ -1854,7 +1861,7 @@ export default function ClientsPage() {
                                                 </>
                                               ),
                                               onClick: () => onDelete(row.email),
-                                            },
+                                            },] : []),
                                           ],
                                         }}
                                       >
@@ -1912,7 +1919,7 @@ export default function ClientsPage() {
             tgBotEnable={tgBotEnable}
             groups={allGroups}
             save={onSave}
-            resetTraffic={resetTraffic}
+            resetTraffic={isDelegatedPanel ? undefined : resetTraffic}
             onOpenChange={setFormOpen}
           />
         </LazyMount>

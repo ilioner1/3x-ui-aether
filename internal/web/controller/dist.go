@@ -142,7 +142,11 @@ func serveDistPage(c *gin.Context, name string) {
 	inject := []byte(script)
 	inject = append(inject, csrfMeta...)
 	inject = append(inject, basePathMeta...)
-	inject = append(inject, pwaHeadInjection(basePath, name)...)
+	if c.GetBool("delegated_panel") {
+		inject = append(inject, []byte(`<meta name="x-ui-role" content="delegate">`)...)
+	} else {
+		inject = append(inject, pwaHeadInjection(basePath, name)...)
+	}
 	inject = append(inject, []byte(`</head>`)...)
 	out := bytes.Replace(body, []byte("</head>"), inject, 1)
 

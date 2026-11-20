@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { lazy } from 'react';
 import type { ComponentType } from 'react';
 import {
@@ -35,7 +36,7 @@ export interface PanelRoute {
 
 // The router, the sidebar, the page titles and the command palette all read this list, so a
 // page cannot go missing from one of them.
-export const PANEL_ROUTES: PanelRoute[] = [
+const ALL_PANEL_ROUTES: PanelRoute[] = [
   { path: '/', titleKey: 'menu.dashboard', icon: DashboardOutlined, component: IndexPage },
   { path: '/inbounds', titleKey: 'menu.inbounds', icon: ImportOutlined, component: InboundsPage },
   { path: '/clients', titleKey: 'menu.clients', icon: TeamOutlined, component: ClientsPage },
@@ -49,6 +50,10 @@ export const PANEL_ROUTES: PanelRoute[] = [
   { path: '/api-docs', titleKey: 'menu.apiDocs', icon: ApiOutlined, component: ApiDocsPage },
   { path: '/sponsors', titleKey: 'menu.sponsors', icon: CrownOutlined, component: SponsorsPage },
 ];
+
+export const PANEL_ROUTES = isDelegatedPanel
+  ? ALL_PANEL_ROUTES.filter(({ path }) => path === '/' || path === '/inbounds' || path === '/clients')
+  : ALL_PANEL_ROUTES;
 
 export const PANEL_ROUTE_PATHS = PANEL_ROUTES.map((route) => route.path);
 

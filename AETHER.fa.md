@@ -20,7 +20,7 @@ aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&p
 روی Ubuntu، Debian یا Armbian با systemd و پردازندهٔ amd64 یا arm64، در SSH و با دسترسی root اجرا کنید:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.9/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.10/install.sh)
 ```
 
 نصب‌کننده بستهٔ آمادهٔ پنل، Xray و Aether را از همین مخزن می‌گیرد و منوی `x-ui` و سرویس `x-ui.service` را راه می‌اندازد. نصب به Docker، Go یا Node.js نیاز ندارد. برای دیدن منو `x-ui` و برای دیدن آدرس و تنظیمات پنل `x-ui settings` را اجرا کنید.
@@ -32,7 +32,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.
 روی نصب مستقیم قبلی Aether، با دسترسی root این دستور را اجرا کنید. پنل برای به‌روزرسانی پنل و نصب Psiphon کوتاه‌مدت راه‌اندازی مجدد می‌شود و پایگاه‌داده، تنظیمات و هسته‌ها حفظ می‌شوند.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.9/scripts/update-aether-panel.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.10/scripts/update-aether-panel.sh)
 ```
 
 ## ساخت کانفیگ VLESS با خروجی Aether

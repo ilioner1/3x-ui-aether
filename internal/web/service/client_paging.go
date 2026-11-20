@@ -63,6 +63,9 @@ type ClientPageParams struct {
 	HasTgID    string `form:"hasTgId"`
 	HasComment string `form:"hasComment"`
 	Group      string `form:"group"`
+
+	// DelegatedAdminID is set by the authenticated delegated controller.
+	DelegatedAdminID int64 `form:"-"`
 }
 
 // ClientPageResponse is the shape returned by ListPaged. `Total` is the
@@ -398,8 +401,14 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 	onlines := inboundSvc.GetOnlineClients()
 	q := newClientQuery(db, time.Now().UnixMilli(), expireDiffMs, trafficDiffBytes)
 
+	if params.DelegatedAdminID > 0 {
+		q.joins = append(q.joins, clientQueryJoin{
+			sql:  "JOIN delegated_clients owner ON owner.client_id = c.id AND owner.admin_id = ?",
+			args: []any{params.DelegatedAdminID},
+		})
+	}
 	var total int64
-	if err := db.Model(&model.ClientRecord{}).Count(&total).Error; err != nil {
+	if err := q.from().Count(&total).Error; err != nil {
 		return nil, err
 	}
 
@@ -424,9 +433,12 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 		}
 	}
 
-	groups, err := s.listGroupNames()
-	if err != nil {
-		return nil, err
+	groups := []string{}
+	if params.DelegatedAdminID == 0 {
+		groups, err = s.listGroupNames()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &ClientPageResponse{
