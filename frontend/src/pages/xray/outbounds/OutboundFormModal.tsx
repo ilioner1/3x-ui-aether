@@ -6,7 +6,9 @@ import { FinalMaskField, SniffingField } from '@/lib/xray/forms/fields';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { JsonEditor } from '@/components/form';
 import { Wireguard } from '@/utils';
+import { AetherOutboundSettingsSchema } from '@/schemas/protocols/outbound/aether';
 import { formValuesToWirePayload, rawOutboundToFormValues } from '@/lib/xray/outbound-form-adapter';
+import { aetherLinkError, isAetherLink } from '@/lib/xray/aether-link';
 import { parseOutboundLink } from '@/lib/xray/outbound-link-parser';
 import XDriveForm from '@/lib/xray/forms/transport/XDriveForm';
 import { XMUX_FRESH_DEFAULTS } from '@/schemas/protocols/stream/xhttp';
@@ -126,16 +128,15 @@ export default function OutboundFormModal({
   const flow = tlsFlowAllowed ? storedFlow : '';
 
   /*
-   * Parse a share link (vmess:// / vless:// / trojan:// / ss:// /
-   * hysteria2:// / wireguard://) and replace form state with the result.
+   * Parse a share link and replace form state with the result.
    * The current tag is preserved when the parsed link doesn't carry one.
    */
-  function importLink() {
-    const link = linkInput.trim();
+  function importLink(value: string) {
+    const link = value.trim();
     if (!link) return;
     const parsed = parseOutboundLink(link);
     if (!parsed) {
-      messageApi.error('Wrong Link!');
+      messageApi.error(isAetherLink(link) ? aetherLinkError : 'Wrong Link!');
       return;
     }
     const currentTag = methods.getValues('tag');
@@ -153,6 +154,7 @@ export default function OutboundFormModal({
     if (!open) return;
     const initial = outboundProp ? rawOutboundToFormValues(outboundProp) : buildAddModeValues();
     methods.reset(initial);
+    setLinkInput('');
     setActiveKey('1');
     setJsonText(JSON.stringify(formValuesToWirePayload(initial), null, 2));
     setJsonDirty(false);
@@ -390,6 +392,16 @@ export default function OutboundFormModal({
             wrapperCol={{ md: { span: 14 } }}
             labelWrap
           >
+            <Form.Item label={t('pages.clients.link')} htmlFor="outbound-share-link">
+              <Input.Search
+                id="outbound-share-link"
+                value={linkInput}
+                placeholder="aether://, vless://, vmess://, …"
+                enterButton="Import"
+                onChange={(e) => setLinkInput(e.target.value)}
+                onSearch={importLink}
+              />
+            </Form.Item>
             <Tabs
               activeKey={activeKey}
               onChange={onTabChange}
@@ -445,13 +457,15 @@ export default function OutboundFormModal({
                         }}
                       />
 
-                      <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
-                        <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
-                      </FormField>
+                      {protocol !== 'aether' && (
+                        <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
+                          <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />
+                        </FormField>
+                      )}
 
                       {/* Freedom's own card owns the strategy — the core migrates this
                           root key into the same sockopt value, so two knobs would race. */}
-                      {protocol !== 'freedom' && (
+                      {protocol !== 'freedom' && protocol !== 'aether' && (
                         <FormField
                           label={t('pages.xray.outbound.targetStrategy')}
                           name="targetStrategy"
@@ -469,6 +483,17 @@ export default function OutboundFormModal({
                       {protocol === 'http' && <HttpFields />}
                       {protocol === 'socks' && <SocksFields />}
                       {protocol === 'masque' && <MasqueFields />}
+                      {protocol === 'aether' && (
+                        <FormField
+                          label="Aether URI"
+                          name="settings.uri"
+                          rules={{
+                            validate: rhfZodValidate(AetherOutboundSettingsSchema.shape.uri),
+                          }}
+                        >
+                          <Input placeholder="aether://IP:443?protocol=masque&transport=h2" />
+                        </FormField>
+                      )}
 
                       {protocol === 'loopback' && <LoopbackFields />}
                       {protocol === 'blackhole' && <BlackholeFields />}
@@ -622,14 +647,6 @@ export default function OutboundFormModal({
                       size={10}
                       style={{ width: '100%', marginTop: 10 }}
                     >
-                      <Input.Search
-                        aria-label={t('pages.clients.link')}
-                        value={linkInput}
-                        placeholder="vmess:// vless:// trojan:// ss:// hysteria2:// wireguard://"
-                        enterButton="Import"
-                        onChange={(e) => setLinkInput(e.target.value)}
-                        onSearch={importLink}
-                      />
                       <JsonEditor
                         value={jsonText}
                         onChange={(next) => {

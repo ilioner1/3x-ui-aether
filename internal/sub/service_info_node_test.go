@@ -97,7 +97,7 @@ func TestSubService_InfoNode_Active(t *testing.T) {
 		t.Fatalf("first link must be dummy socks node, got: %q", links[0])
 	}
 	decodedRemark, _ := url.QueryUnescape(strings.TrimPrefix(links[0], "socks://127.0.0.1:1080#"))
-	if !strings.Contains(decodedRemark, "user1@test.com") || !strings.Contains(decodedRemark, "8.00GB") {
+	if !strings.HasPrefix(decodedRemark, "📊8.00GB") || !strings.Contains(decodedRemark, "user1@test.com") {
 		t.Fatalf("expected dummy remark to contain user1@test.com and 8.00GB, got: %q", decodedRemark)
 	}
 

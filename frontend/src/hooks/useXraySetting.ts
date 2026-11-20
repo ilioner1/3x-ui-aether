@@ -36,6 +36,7 @@ export function isUdpOutbound(outbound: unknown): boolean {
   const rawNetwork = o?.streamSettings?.network;
   const network = typeof rawNetwork === 'string' ? rawNetwork.toLowerCase() : '';
   return (
+    isOutboundProtocol(o, 'aether') ||
     isOutboundProtocol(o, 'wireguard') ||
     isOutboundProtocol(o, 'hysteria') ||
     isOutboundProtocol(o, 'amneziawg') ||

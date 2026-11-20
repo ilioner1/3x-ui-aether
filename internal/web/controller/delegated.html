@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مدیریت نماینده‌ها | 3x-ui</title>
+<style>
+:root{color-scheme:light dark;--bg:#f1f5f9;--card:#fff;--ink:#132238;--muted:#536379;--border:#dbe3ee;--accent:#1465d8;--warn:#9f2430}
+@media(prefers-color-scheme:dark){:root{--bg:#121822;--card:#1d2633;--ink:#e9eef7;--muted:#b4c1d3;--border:#364357;--accent:#7cb4ff;--warn:#ff9a9a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}a{color:var(--accent)}header{border-bottom:1px solid var(--border);background:var(--card)}nav,main{max-width:1180px;margin:auto;padding:16px}nav{display:flex;gap:20px;align-items:center;flex-wrap:wrap}nav strong{font-size:20px}.card{border:1px solid var(--border);background:var(--card);border-radius:9px;padding:18px;margin:12px 0}h1{font-size:25px}h2{font-size:19px;margin:0 0 15px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}form{margin:0}label{display:block;margin:8px 0}input,select,textarea,button{font:inherit;color:inherit;background:var(--card);border:1px solid var(--border);padding:7px 9px;border-radius:5px;max-width:100%}input[type=checkbox]{vertical-align:middle}button{cursor:pointer;border-color:var(--accent);color:var(--accent)}textarea{display:block;width:100%;height:54px}table{border-collapse:collapse;width:100%;text-align:right}th,td{padding:9px;border-bottom:1px solid var(--border);vertical-align:middle}td form{display:flex;gap:6px;flex-wrap:wrap}.table{overflow:auto}.muted{color:var(--muted)}.warn{color:var(--warn)}.login{max-width:420px;margin:60px auto}.links{direction:ltr;text-align:left}
+</style>
+</head>
+<body>
+<header><nav><strong dir="ltr">3x-ui</strong>
+{{if or (eq .Page "admins") (eq .Page "reports")}}
+<a href="{{.Base}}panel/">پنل اصلی</a><a href="{{.Base}}panel/delegated-admins">ادمین‌ها و گروه‌ها</a><a href="{{.Base}}panel/delegated-reports">گزارش ادمین‌ها</a>
+{{end}}
+</nav></header>
+<main>
+{{if .Error}}<p role="alert" class="warn">{{.Error}}</p>{{end}}
+{{if eq .Page "admins"}}
+<h1>ادمین‌ها و گروه‌ها</h1>
+<p>لینک ورود ادمین‌ها <a href="{{.Base}}delegate/"><bdi>{{.Base}}delegate/</bdi></a></p>
+<div class="grid">
+<section class="card">
+<h2>{{if .Group.ID}}ویرایش گروه{{else}}گروه جدید{{end}}</h2>
+<form method="post" action="{{.Base}}panel/delegated-admins/group">
+<input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="id" value="{{.Group.ID}}">
+<label>نام گروه <input name="name" value="{{.Group.Name}}" maxlength="100" required></label>
+<p class="muted">اینباندهای قابل استفاده برای کلاینت‌های گروه</p>
+{{range .Inbounds}}<label><input type="checkbox" name="inbound" value="{{.Id}}" {{if index $.Granted .Id}}checked{{end}}> <bdi>{{.Remark}} · {{.Protocol}} · #{{.Id}}</bdi></label>{{else}}<p>اینباند محلی پشتیبانی‌شده پیدا نشد.</p>{{end}}
+<button>ذخیرهٔ گروه</button></form>
+{{range .Groups}}<p><a href="?group={{.ID}}">{{.Name}}</a></p>{{end}}
+</section>
+<section class="card">
+<h2>{{if .Admin.ID}}ویرایش حساب{{else}}ادمین جدید{{end}}</h2>
+<form method="post" action="{{.Base}}panel/delegated-admins/account">
+<input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="id" value="{{.Admin.ID}}">
+<label>نام کاربری <input name="username" value="{{.Admin.Username}}" maxlength="64" required></label>
+<label>رمز عبور <input name="password" type="password" minlength="8" autocomplete="new-password" {{if not .Admin.ID}}required{{end}}></label>
+{{if .Admin.ID}}<p class="muted">اگر رمز خالی بماند، رمز فعلی استفاده می‌شود.</p>{{end}}
+<label>گروه <select required name="group"><option value="">انتخاب گروه</option>{{range .Groups}}<option value="{{.ID}}" {{if eq .ID $.Admin.GroupID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<label>سقف کل (GiB) <input name="quota" type="number" min="1" max="1000000" value="{{if .Admin.ID}}{{quota .Admin.QuotaBytes}}{{end}}" required></label>
+{{if .Admin.ID}}<p>مصرف ثبت‌شده <bdi>{{gib .Admin.UsedBytes}} GiB</bdi></p>{{end}}
+<label><input name="enable" type="checkbox" value="1" {{if or (not .Admin.ID) .Admin.Enabled}}checked{{end}}> فعال</label>
+<button>ذخیرهٔ ادمین</button></form>
+</section></div>
+<section class="card table"><table><thead><tr><th>حساب</th><th>سقف (GiB)</th><th>مصرف (GiB)</th><th>گزارش</th><th>ورود ادمین</th></tr></thead><tbody>
+{{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a> {{if not .Enabled}}(تعلیق){{end}}</td><td>{{gib .QuotaBytes}}</td><td>{{gib .UsedBytes}}</td><td><a href="{{$.Base}}panel/delegated-reports?admin={{.ID}}">مشاهدهٔ کلاینت‌ها</a></td><td><a href="{{$.Base}}delegate/?account={{.Username}}">لینک ورود</a></td></tr>{{end}}
+</tbody></table></section>
+{{else if eq .Page "reports"}}
+<h1>گزارش ادمین‌ها</h1>
+<section class="card table"><table><thead><tr><th>ادمین</th><th>مصرف (GiB)</th><th>سقف (GiB)</th><th>وضعیت</th></tr></thead><tbody>
+{{range .Admins}}<tr><td><a href="?admin={{.ID}}"><bdi>{{.Username}}</bdi></a></td><td>{{gib .UsedBytes}}</td><td>{{gib .QuotaBytes}}</td><td>{{if not .Enabled}}تعلیق{{else if ge .UsedBytes .QuotaBytes}}سهمیه تمام شده{{else}}فعال{{end}}</td></tr>{{end}}
+</tbody></table></section>
+{{if .Selected}}<section class="card table"><table><thead><tr><th>کلاینت</th><th>مصرف (GiB)</th><th>کانفیگ</th>{{if eq .Page "reports"}}<th>مدیریت</th>{{end}}</tr></thead><tbody>
+{{range .Clients}}<tr><td><bdi>{{.Label}}</bdi></td><td>{{gib .UsedBytes}}</td>
+<td><a href="{{$.Base}}{{if eq $.Page "reports"}}panel/delegated-reports{{else}}delegate{{end}}/links/{{.ID}}">لینک‌ها</a></td>
+{{if eq $.Page "reports"}}<td><form method="post" action="{{$.Base}}panel/delegated-reports/client"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input name="label" aria-label="نام کلاینت" value="{{.Label}}" required><label>سقف کلاینت (GiB) <input type="number" min="0" max="1000000" name="clientQuota" value="{{quota .TotalGB}}" aria-label="سقف کلاینت"></label><label><input type="checkbox" name="enable" value="1" {{if .Enabled}}checked{{end}}> فعال</label><button>ذخیره</button></form></td>{{end}}</tr>
+{{else}}<tr><td colspan="4">کلاینتی ثبت نشده.</td></tr>{{end}}</tbody></table>
+{{if .Next}}<p><a href="?{{if .Selected}}admin={{.Selected}}&amp;{{end}}after={{.Next}}">صفحهٔ بعد</a></p>{{end}}</section>{{end}}
+{{else if eq .Page "links"}}
+<section class="card"><h1>کانفیگ {{(index .Clients 0).Label}}</h1>
+{{range .Links}}<textarea class="links" readonly aria-label="لینک اتصال">{{.}}</textarea>{{else}}<p>لینکی برای این کلاینت صادر نشده.</p>{{end}}</section>
+{{end}}
+</main></body></html>

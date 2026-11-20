@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useEffect } from 'react';
 import { getSharedWebSocketClient } from '@/api/websocket';
 
@@ -5,6 +6,7 @@ type Handler = (payload: unknown) => void;
 
 export function useWebSocket(handlers: Record<string, Handler>) {
   useEffect(() => {
+    if (isDelegatedPanel) return;
     const client = getSharedWebSocketClient();
     const entries = Object.entries(handlers);
     for (const [event, fn] of entries) client.on(event, fn);

@@ -1,4 +1,5 @@
 import { RandomUtil, Wireguard } from '@/utils';
+import type { AetherOutboundSettings } from '@/schemas/protocols/outbound/aether';
 
 import type { BlackholeOutboundSettings } from '@/schemas/protocols/outbound/blackhole';
 import type { DNSOutboundSettings } from '@/schemas/protocols/outbound/dns';
@@ -136,6 +137,7 @@ export function createDefaultMasqueOutboundSettings(): MasqueOutboundSettings {
 }
 
 export type AnyOutboundSettings =
+  | AetherOutboundSettings
   | BlackholeOutboundSettings
   | DNSOutboundSettings
   | FreedomOutboundSettings
@@ -161,6 +163,8 @@ export type AnyOutboundSettings =
 export function createDefaultOutboundSettings(protocol: string): AnyOutboundSettings | null {
   void RandomUtil;
   switch (protocol) {
+    case 'aether':
+      return { uri: '' };
     case 'freedom':
       return createDefaultFreedomOutboundSettings();
     case 'blackhole':

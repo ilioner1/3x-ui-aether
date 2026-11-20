@@ -19,6 +19,7 @@ import (
 // so the list payload stays compact even when the panel manages thousands
 // of clients. Modals that need the full record still call /get/:email.
 type ClientSlim struct {
+	OwnerName    string              `json:"ownerName,omitempty"`
 	Email        string              `json:"email" example:"alice@example.com"`
 	SubID        string              `json:"subId" example:"abcd1234"`
 	Enable       bool                `json:"enable" example:"true"`
@@ -63,6 +64,11 @@ type ClientPageParams struct {
 	HasTgID    string `form:"hasTgId"`
 	HasComment string `form:"hasComment"`
 	Group      string `form:"group"`
+
+	// DelegatedAdminID is set by the authenticated delegated controller.
+	DelegatedAdminID int64  `form:"-"`
+	OwnerScope       string `form:"scope"`
+	OwnerAdminID     int64  `form:"ownerAdminId"`
 }
 
 // ClientPageResponse is the shape returned by ListPaged. `Total` is the
@@ -163,6 +169,8 @@ func clientSearchCond(variants []string) (string, []any) {
 // memory cost ~200ms per request at 20k clients on a page that polls every
 // 5 seconds, which is what made the table feel stuck on large panels.
 type clientQuery struct {
+	delegateID       int64
+	ownerScope       string
 	db               *gorm.DB
 	joins            []clientQueryJoin
 	usedExpr         string
@@ -209,6 +217,19 @@ func (q clientQuery) from() *gorm.DB {
 	tx := q.db.Table("clients AS c")
 	for _, j := range q.joins {
 		tx = tx.Joins(j.sql, j.args...)
+	}
+	return q.owned(tx)
+}
+
+func (q clientQuery) owned(tx *gorm.DB) *gorm.DB {
+	if q.delegateID > 0 {
+		return tx.Joins("JOIN delegated_clients owner ON owner.client_id = c.id AND owner.admin_id = ?", q.delegateID)
+	}
+	switch q.ownerScope {
+	case "master":
+		return tx.Where("NOT EXISTS (SELECT 1 FROM delegated_clients WHERE client_id = c.id)")
+	case "delegated":
+		return tx.Joins("JOIN delegated_clients ownership ON ownership.client_id = c.id")
 	}
 	return tx
 }
@@ -398,8 +419,13 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 	onlines := inboundSvc.GetOnlineClients()
 	q := newClientQuery(db, time.Now().UnixMilli(), expireDiffMs, trafficDiffBytes)
 
+	q.delegateID = params.DelegatedAdminID
+	q.ownerScope = params.OwnerScope
+	if q.ownerScope == "delegated" && q.delegateID == 0 {
+		q.delegateID = params.OwnerAdminID
+	}
 	var total int64
-	if err := db.Model(&model.ClientRecord{}).Count(&total).Error; err != nil {
+	if err := q.from().Count(&total).Error; err != nil {
 		return nil, err
 	}
 
@@ -424,9 +450,12 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 		}
 	}
 
-	groups, err := s.listGroupNames()
-	if err != nil {
-		return nil, err
+	groups := []string{}
+	if params.DelegatedAdminID == 0 {
+		groups, err = s.listGroupNames()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &ClientPageResponse{
@@ -456,6 +485,22 @@ func (q clientQuery) pageRows(params ClientPageParams, onlines []string, offset,
 		return []ClientSlim{}, nil
 	}
 
+	owners := make(map[int]string)
+	if q.ownerScope == "delegated" {
+		var names []struct {
+			ClientID int
+			Username string
+		}
+		if err := q.db.Table("delegated_clients AS d").
+			Select("d.client_id, a.username").
+			Joins("JOIN delegated_admins AS a ON a.id = d.admin_id").
+			Where("d.client_id IN ?", ids).Scan(&names).Error; err != nil {
+			return nil, err
+		}
+		for _, name := range names {
+			owners[name.ClientID] = name.Username
+		}
+	}
 	var records []model.ClientRecord
 	if err := q.db.Where("id IN ?", ids).Find(&records).Error; err != nil {
 		return nil, err
@@ -496,11 +541,13 @@ func (q clientQuery) pageRows(params ClientPageParams, onlines []string, offset,
 		if rec == nil {
 			continue
 		}
-		items = append(items, toClientSlim(ClientWithAttachments{
+		item := toClientSlim(ClientWithAttachments{
 			ClientRecord: *rec,
 			InboundIds:   attachments[rec.Id],
 			Traffic:      trafficByEmail[rec.Email],
-		}))
+		})
+		item.OwnerName = owners[rec.Id]
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -578,10 +625,10 @@ func (q clientQuery) onlineEmails(onlines []string) ([]string, int, error) {
 	count := 0
 	for _, batch := range chunkStrings(onlines, sqlInChunk) {
 		var page []string
-		if err := q.db.Model(&model.ClientRecord{}).
-			Where("COALESCE(enable, FALSE) = TRUE AND email IN ?", batch).
-			Order("id ASC").
-			Pluck("email", &page).Error; err != nil {
+		if err := q.owned(q.db.Table("clients AS c")).
+			Where(sqlClientEnabled+" = TRUE AND c.email IN ?", batch).
+			Order("c.id ASC").
+			Pluck("c.email", &page).Error; err != nil {
 			return nil, 0, err
 		}
 		count += len(page)

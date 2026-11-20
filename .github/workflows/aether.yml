@@ -1,0 +1,87 @@
+name: Aether integration
+on:
+  push:
+    branches: [feat/aether-outbound]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aether-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Aether regression tests
+        run: go test ./internal/aether -count=1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Format changed source
+        run: |
+          gofmt -w internal/aether internal/util/link/outbound.go internal/xray/api.go internal/xray/config.go internal/web/service/xray.go internal/web/service/outbound/probe_http.go internal/web/service/outbound/aether_live_test.go
+          cd frontend
+          npx oxfmt --write src/lib/xray/aether-link.ts src/schemas/protocols/outbound/aether.ts src/test/aether-outbound.test.ts src/schemas/primitives/outbound-protocol.ts src/schemas/protocols/outbound/index.ts src/schemas/forms/outbound-form.ts src/lib/xray/outbound-defaults.ts src/lib/xray/outbound-form-adapter.ts src/lib/xray/outbound-link-parser.ts src/pages/xray/outbounds/OutboundFormModal.tsx src/pages/xray/outbounds/outbounds-tab-helpers.ts src/hooks/useXraySetting.ts
+      - name: Frontend validation
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npx vitest run --project unit src/test/aether-outbound.test.ts src/test/outbound-link-parser.test.ts src/test/outbound-form-adapter.test.ts src/test/outbound-defaults.test.ts
+          npm run build
+      - name: Backend validation and build
+        run: |
+          make dist-stub
+          go test ./internal/aether ./internal/util/link ./internal/xray ./internal/web/service/outbound ./internal/web/service -count=1
+          mkdir -p x-ui artifacts
+          go build -o artifacts/x-ui .
+          go build -o x-ui/xray-linux-amd64 github.com/xtls/xray-core/main
+          bash scripts/install-aether.sh x-ui
+          cp x-ui/aether x-ui/xray-linux-amd64 artifacts/
+      - name: Install and start panel on runner
+        run: bash scripts/smoke-aether-panel.sh
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --fix --timeout=10m
+      - name: Full project checks
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+          cd ..
+          make verify
+          go test -race ./internal/aether -count=1
+          go test ./internal/util/link -run '^$' -fuzz FuzzParseLink -fuzztime=30s -parallel=2
+      - name: Test real tunnel
+        id: live
+        continue-on-error: true
+        env:
+          XUI_AETHER_E2E: "1"
+          XUI_BIN_FOLDER: ${{ github.workspace }}/x-ui
+          XUI_AETHER_RESULT: ${{ github.workspace }}/artifacts/aether-live-result.json
+        run: go test ./internal/web/service/outbound -run '^TestAetherLiveTunnel$' -v -count=1 -timeout 3m
+      - name: Export formatting changes
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import subprocess, pathlib, json, base64
+          paths = subprocess.check_output(['git','diff','--name-only']).decode().splitlines()
+          files = {p: base64.b64encode(pathlib.Path(p).read_bytes()).decode() for p in paths if p.endswith(('.go','.ts','.tsx'))}
+          print('FORMATTED_SOURCE_JSON='+json.dumps(files))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aether-panel-linux-amd64
+          path: artifacts/
+      - name: Require successful live tunnel
+        if: always() && steps.live.outcome == 'failure'
+        run: exit 1

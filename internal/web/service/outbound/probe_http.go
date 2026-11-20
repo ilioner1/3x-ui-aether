@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
@@ -169,7 +170,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		// UDP protocols (wireguard, hysteria, kcp/quic transports) ignore
 		// unauthenticated packets, so a raw dial can't tell "reachable" from
 		// "dead" — route them through the real xray probe.
-		if mode == "tcp" && !outboundTransportIsUDP(ob) {
+		if mode == "tcp" && !outboundTransportIsUDP(ob) && !strings.EqualFold(fmt.Sprint(ob["protocol"]), "aether") {
 			tcpLane = append(tcpLane, tcpEntry{idx: i, ob: ob})
 			continue
 		}
@@ -285,6 +286,27 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, testURL strin
 	defer release()
 
 	cfg := buildBatchTestConfig(items, allOutbounds, ports)
+	probeRoot, err := os.MkdirTemp("", "xui-aether-probe-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(probeRoot)
+	manager := aether.NewManager(probeRoot, aether.BinaryPath())
+	reservedBridgePorts := make(map[int]bool, len(ports))
+	for _, port := range ports {
+		reservedBridgePorts[port] = true
+	}
+	bridged, desired, err := manager.Render(cfg.OutboundConfigs, probeRoot, reservedBridgePorts)
+	if err != nil {
+		return false, err
+	}
+	cfg.OutboundConfigs = json_util.RawMessage(bridged)
+	defer manager.StopAll()
+	ctx, cancel := context.WithTimeout(context.Background(), aether.StartupTimeout(desired, 90*time.Second))
+	defer cancel()
+	if err := manager.Ensure(ctx, desired); err != nil {
+		return false, err
+	}
 
 	configPath, err := createTestConfigPath()
 	if err != nil {

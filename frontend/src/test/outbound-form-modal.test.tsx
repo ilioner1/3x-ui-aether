@@ -58,6 +58,35 @@ function toggleSwitch(label: string) {
 }
 
 describe('OutboundFormModal', () => {
+  it('imports a pasted Aether link from the default view and submits the Aether outbound', async () => {
+    const onConfirm = vi.fn();
+    const uri =
+      'aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#mokhaberaat2';
+    renderWithProviders(
+      <OutboundFormModal
+        open
+        outbound={null}
+        existingTags={[]}
+        onClose={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('aether://, vless://, vmess://, …'), {
+      target: { value: uri },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
+    expect(screen.getByDisplayValue(uri)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(document.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement);
+    });
+    expect(onConfirm).toHaveBeenCalledWith({
+      protocol: 'aether',
+      tag: 'mokhaberaat2',
+      settings: { uri },
+    });
+  });
+
   it('renders add mode without crashing', () => {
     renderModal(null);
     expect(document.querySelector('.ant-modal')).toBeTruthy();

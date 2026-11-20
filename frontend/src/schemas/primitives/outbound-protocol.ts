@@ -9,6 +9,7 @@ export function isOutboundProtocol(
 }
 
 export const OutboundProtocols = Object.freeze({
+  Aether: 'aether',
   Freedom: 'freedom',
   Blackhole: 'blackhole',
   DNS: 'dns',

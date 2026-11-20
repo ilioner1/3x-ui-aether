@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { HttpUtil } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { DBInbound, coerceInboundJsonField } from '@/models/dbinbound';
@@ -159,24 +160,28 @@ export function useInbounds() {
   const onlinesQuery = useQuery({
     queryKey: keys.clients.onlines(),
     queryFn: fetchOnlineClients,
+    enabled: !isDelegatedPanel,
     staleTime: Infinity,
   });
 
   const onlinesByGuidQuery = useQuery({
     queryKey: keys.clients.onlinesByGuid(),
     queryFn: fetchOnlineClientsByGuid,
+    enabled: !isDelegatedPanel,
     staleTime: Infinity,
   });
 
   const activeInboundsQuery = useQuery({
     queryKey: keys.clients.activeInbounds(),
     queryFn: fetchActiveInboundsByNode,
+    enabled: !isDelegatedPanel,
     staleTime: Infinity,
   });
 
   const lastOnlineQuery = useQuery({
     queryKey: keys.clients.lastOnline(),
     queryFn: fetchLastOnlineMap,
+    enabled: !isDelegatedPanel,
     staleTime: Infinity,
   });
 

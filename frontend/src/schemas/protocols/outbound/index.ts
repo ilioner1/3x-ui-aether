@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { AetherOutboundSettingsSchema } from './aether';
+export * from './aether';
 
 import { BlackholeOutboundSettingsSchema } from './blackhole';
 import { AmneziaWGOutboundSettingsSchema } from './amneziawg';
@@ -31,6 +33,7 @@ export * from './vmess';
 export * from './wireguard';
 
 export const OutboundSettingsSchema = z.discriminatedUnion('protocol', [
+  z.object({ protocol: z.literal('aether'), settings: AetherOutboundSettingsSchema }),
   z.object({ protocol: z.literal('vmess'), settings: VmessOutboundSettingsSchema }),
   z.object({ protocol: z.literal('vless'), settings: VlessOutboundSettingsSchema }),
   z.object({ protocol: z.literal('trojan'), settings: TrojanOutboundSettingsSchema }),

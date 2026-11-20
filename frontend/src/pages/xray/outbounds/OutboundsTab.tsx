@@ -37,6 +37,7 @@ import {
   ImportOutlined,
 } from '@ant-design/icons';
 
+import { aetherLinkError, isAetherLink, parseAetherLink } from '@/lib/xray/aether-link';
 import { isOutboundProtocol } from '@/schemas/primitives';
 import { HttpUtil } from '@/utils';
 import { onNumber } from '@/utils/onNumber';
@@ -301,11 +302,29 @@ export default function OutboundsTab({
 
   function importOutbounds(value: string) {
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(value);
-    } catch {
-      messageApi.error(t('pages.xray.importInvalidJson'));
-      return;
+    if (isAetherLink(value)) {
+      const outbound = parseAetherLink(value);
+      if (!outbound) {
+        messageApi.error(aetherLinkError);
+        return;
+      }
+      const tag = outbound.tag || 'aether';
+      if (tag.startsWith('_bl_')) {
+        messageApi.error(t('pages.xray.balancer.reservedPrefix'));
+        return;
+      }
+      if (templateSettings?.outbounds?.some((current) => current.tag === tag)) {
+        messageApi.error('Tag already used by another outbound');
+        return;
+      }
+      parsed = [{ ...outbound, tag }];
+    } else {
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        messageApi.error(t('pages.xray.importInvalidJson'));
+        return;
+      }
     }
     const obj = parsed as { outbounds?: unknown };
     const list = Array.isArray(parsed)
@@ -686,7 +705,7 @@ export default function OutboundsTab({
           title={t('pages.xray.importOutbounds')}
           okText={t('pages.xray.importOutbounds')}
           type="textarea"
-          json
+          placeholder="aether://… / JSON"
           onConfirm={importOutbounds}
         />
         <TextModal

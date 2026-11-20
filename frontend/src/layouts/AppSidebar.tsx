@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router';
@@ -319,8 +320,9 @@ export default function AppSidebar() {
   const openLink = useCallback(
     async (key: string) => {
       if (key === LOGOUT_KEY) {
-        await HttpUtil.post('/logout');
-        window.location.href = window.X_UI_BASE_PATH || '/';
+        await HttpUtil.post(isDelegatedPanel ? '/delegate/logout' : '/logout');
+        const base = window.X_UI_BASE_PATH || '/';
+        window.location.href = isDelegatedPanel ? `${base}delegate/` : base;
         return;
       }
       navigate(key);
@@ -399,23 +401,25 @@ export default function AppSidebar() {
           }
           placement="right"
         >
-          <button
-            type="button"
-            className={`sidebar-command-trigger${railCollapsed ? ' collapsed' : ''}`}
-            onClick={openCommandPalette}
-            aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
-          >
-            <span className="sidebar-command-left">
-              <SearchOutlined aria-hidden className="sidebar-command-icon" />
-              <span className="sidebar-command-text">
-                {t('commandPalette.search') || 'Search...'}
+          {!isDelegatedPanel && (
+            <button
+              type="button"
+              className={`sidebar-command-trigger${railCollapsed ? ' collapsed' : ''}`}
+              onClick={openCommandPalette}
+              aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
+            >
+              <span className="sidebar-command-left">
+                <SearchOutlined aria-hidden className="sidebar-command-icon" />
+                <span className="sidebar-command-text">
+                  {t('commandPalette.search') || 'Search...'}
+                </span>
               </span>
-            </span>
-            <span className="sidebar-command-kbd">
-              <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
-              <span className="kbd-key">K</span>
-            </span>
-          </button>
+              <span className="sidebar-command-kbd">
+                <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
+                <span className="kbd-key">K</span>
+              </span>
+            </button>
+          )}
         </Tooltip>
         <Menu
           theme={currentTheme}
@@ -477,25 +481,27 @@ export default function AppSidebar() {
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          className="sidebar-command-trigger"
-          onClick={() => {
-            setDrawerOpen(false);
-            openCommandPalette();
-          }}
-          aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
-          style={{ margin: '8px 12px 4px', width: 'calc(100% - 24px)' }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <SearchOutlined aria-hidden className="sidebar-command-icon" />
-            <span>{t('commandPalette.search') || 'Search...'}</span>
-          </span>
-          <span className="sidebar-command-kbd">
-            <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
-            <span className="kbd-key">K</span>
-          </span>
-        </button>
+        {!isDelegatedPanel && (
+          <button
+            type="button"
+            className="sidebar-command-trigger"
+            onClick={() => {
+              setDrawerOpen(false);
+              openCommandPalette();
+            }}
+            aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
+            style={{ margin: '8px 12px 4px', width: 'calc(100% - 24px)' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <SearchOutlined aria-hidden className="sidebar-command-icon" />
+              <span>{t('commandPalette.search') || 'Search...'}</span>
+            </span>
+            <span className="sidebar-command-kbd">
+              <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
+              <span className="kbd-key">K</span>
+            </span>
+          </button>
+        )}
         <Menu
           theme={currentTheme}
           mode="inline"

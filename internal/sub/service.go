@@ -546,13 +546,25 @@ func (s *SubService) resolveInfoNodeRemark(subId string, uniqueEmails []string, 
 		if tmpl == "" {
 			tmpl = service.DefaultRemarkTemplate
 		}
-		remark := expandRemarkVars(tmpl, ctx)
+		remark := expandRemarkVars(infoNodeTrafficFirst(tmpl), ctx)
 		if strings.TrimSpace(remark) != "" {
 			return infoNodeActive, remark
 		}
 	}
 
 	return infoNodeNone, ""
+}
+
+func infoNodeTrafficFirst(template string) string {
+	segments := strings.Split(translateUISingleBrackets(template), "|")
+	for i, segment := range segments {
+		if strings.Contains(segment, "{{TRAFFIC_LEFT}}") {
+			copy(segments[1:i+1], segments[:i])
+			segments[0] = segment
+			return strings.Join(segments, "|")
+		}
+	}
+	return template
 }
 
 func (s *SubService) getSubs(subId string) ([]string, []string, int64, xray.ClientTraffic, error) {

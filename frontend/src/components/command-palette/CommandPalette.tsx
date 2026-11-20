@@ -75,6 +75,9 @@ export const PALETTE_KEYWORDS: Record<string, string[]> = {
     'masque',
   ],
   '/clients': ['clients', 'users', 'sub', 'traffic', 'quota'],
+  '/admins': ['admins', 'accounts', 'delegates'],
+  '/admins-clients': ['admins clients', 'delegated clients'],
+  '/admins-reports': ['admin reports', 'usage', 'quota'],
   '/groups': ['groups', 'tags', 'batch'],
   '/nodes': ['nodes', 'servers', 'cluster', 'remote nodes'],
   '/hosts': ['hosts', 'sni', 'domains'],
@@ -187,7 +190,7 @@ export default function CommandPalette() {
     const controller = new AbortController();
 
     HttpUtil.get(
-      `/panel/api/clients/list/paged?search=${encodeURIComponent(debouncedQuery)}&pageSize=8`,
+      `/panel/api/clients/list/paged?search=${encodeURIComponent(debouncedQuery)}&pageSize=8&scope=master`,
       undefined,
       { silent: true, signal: controller.signal },
     )

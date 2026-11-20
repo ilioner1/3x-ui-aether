@@ -1,0 +1,210 @@
+name: Aether native Linux release
+on:
+  push:
+    branches: [feat/aether-outbound]
+    paths:
+      - .github/workflows/aether-native.yml
+      - install.sh
+      - x-ui.sh
+      - x-ui.service.debian
+      - scripts/install-aether.sh
+      - scripts/update-aether-panel.sh
+      - frontend/scripts/smoke-aether-import.mjs
+      - scripts/smoke-delegated-panel.py
+      - frontend/src/hooks/useClients.ts
+      - frontend/src/pages/clients/ClientFormModal.tsx
+      - frontend/src/pages/admins/AdminsPage.tsx
+      - internal/web/controller/server.go
+permissions:
+  contents: read
+concurrency:
+  group: aether-native-release
+  cancel-in-progress: true
+env:
+  RELEASE_TAG: v3.11.0-aether.13
+jobs:
+  package:
+    if: github.repository == 'ilioner1/3x-ui-aether'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the panel
+        run: |
+          bash -n install.sh
+          bash -n x-ui.sh
+          bash -n scripts/update-aether-panel.sh
+          npm --prefix frontend ci
+          npm --prefix frontend run lint
+          npm --prefix frontend run format:check
+          npm --prefix frontend run typecheck
+          go test ./internal/sub -run TestSubService_InfoNode
+          (cd frontend && npx vitest run --project components src/test/outbound-form-modal.test.tsx src/test/outbounds-loopback-index.test.tsx -t Aether)
+          (cd frontend && npx vitest run --project unit src/test/aether-outbound.test.ts)
+          go test ./internal/aether ./internal/util/link
+          go test ./internal/database -run TestMigrationModelsMatchPanelModels -count=1
+          npm --prefix frontend run build
+          mkdir -p build
+          go build -trimpath -o build/x-ui .
+      - name: Package the panel, Xray and Aether
+        env:
+          ARCH: ${{ matrix.arch }}
+          MTG_MULTI_VER: v1.16.1
+        run: |
+          bash DockerInit.sh "$ARCH"
+          bash scripts/install-aether.sh build/bin
+          cp LICENSE x-ui.sh x-ui.service.debian build/
+          mkdir -p packages package-root
+          mv build package-root/x-ui
+          archive="x-ui-linux-$ARCH.tar.gz"
+          tar -C package-root -czf "packages/$archive" x-ui
+          (cd packages && sha256sum "$archive" > "$archive.sha256")
+      - name: Install and verify the systemd service and x-ui menu
+        run: |
+          installer=install.sh
+          package_dir="$PWD/packages"
+          if [[ "${{ matrix.arch }}" == amd64 ]]; then
+            installer="$RUNNER_TEMP/install-aether-previous.sh"
+            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.12/install.sh -o "$installer"
+            package_dir=""
+          fi
+          if ! sudo env XUI_AETHER_PACKAGE_DIR="$package_dir" XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1; then
+            echo "Native installer failed. Installer output is private because it may contain credentials."
+            exit 1
+          fi
+          if [[ "${{ matrix.arch }}" == amd64 ]]; then
+            sudo env XUI_AETHER_PACKAGE_DIR="$PWD/packages" bash scripts/update-aether-panel.sh
+          fi
+          sudo systemctl is-enabled --quiet x-ui
+          sudo systemctl is-active --quiet x-ui
+          test -x /usr/bin/x-ui
+          test -x /usr/local/x-ui/bin/aether
+          test -x /usr/local/x-ui/bin/pt/psiphon-tunnel-core
+          sudo /usr/bin/x-ui status >/dev/null
+          echo "x-ui menu and systemd status verified"
+          sudo systemctl show x-ui -p Environment --value | grep -Fq XUI_AETHER_NATIVE=1
+          echo "Aether service environment verified"
+          sudo bash -ec '
+            source /etc/x-ui/install-result.env
+            test "$XUI_PANEL_PORT" = 20953
+            path="/${XUI_WEB_BASE_PATH#/}"
+            url="http://127.0.0.1:${XUI_PANEL_PORT}${path%/}/"
+            for i in {1..15}; do
+              code=$(curl --noproxy "*" --silent --location --max-redirs 5 --max-time 2 -w "%{http_code}" -o /tmp/aether-panel-login "$url") || true
+              if [[ "$code" == 200 ]] && grep -qi "<html" /tmp/aether-panel-login; then
+                echo "Panel login returned HTTP 200"
+                exit 0
+              fi
+              sleep 1
+            done
+            printf "Panel login check failed (HTTP %s)\n" "$code"
+            systemctl is-active x-ui || true
+            exit 1
+          '
+      - name: Verify delegated login, VLESS usage and top-up on the installed panel
+        if: matrix.arch == 'amd64'
+        run: |
+          sudo bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN XUI_USERNAME XUI_PASSWORD
+            exec python3 scripts/smoke-delegated-panel.py
+          '
+      - name: Import through the browser and connect through VLESS
+        if: matrix.arch == 'amd64'
+        run: |
+          (cd frontend && npx playwright install --with-deps chromium)
+          source <(sudo cat /etc/x-ui/install-result.env)
+          export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_USERNAME XUI_PASSWORD
+          node frontend/scripts/smoke-aether-import.mjs
+          sudo bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            export XUI_AETHER_REQUIRE_IMPORTED=1
+            exec python3 scripts/smoke-aether-client.py
+          '
+      - name: Probe the requested Psiphon chain and India egress
+        if: matrix.arch == 'amd64'
+        continue-on-error: true
+        timeout-minutes: 7
+        env:
+          XUI_AETHER_TEST_URI: "aether://162.159.199.111:1701?protocol=masque&scan=thorough&ip=v4&transport=h2&psiphon=chain&psiphon_mode=auto&region=IN#mokhaberaat"
+        run: |
+          if ! sudo --preserve-env=XUI_AETHER_TEST_URI bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            exec python3 scripts/smoke-aether-client.py
+          '; then
+            sudo find /etc/x-ui/aether -name core.log -exec grep -hE 'psiphon is asked|psiphon is ready|psiphon starts|starting psiphon|can leave from|tunnel timed out|connection refused|could not connect|all attempts failed' {} + || true
+            exit 1
+          fi
+      - name: Inject one Aether process startup failure
+        if: matrix.arch == 'amd64'
+        run: |
+          cat > "$RUNNER_TEMP/aether-test-wrapper" <<'EOF'
+          #!/bin/bash
+          if [[ " $* " == *" --peer 192.0.2.44:443 "* && " $* " == *" --psiphon "* ]]; then
+            echo "Deliberate startup failure in the twentieth outbound test" >&2
+            exit 1
+          fi
+          exec /usr/local/x-ui/bin/aether "$@"
+          EOF
+          sudo install -m 0755 "$RUNNER_TEMP/aether-test-wrapper" /usr/local/bin/aether-test-wrapper
+          sudo install -d /etc/systemd/system/x-ui.service.d
+          printf '[Service]\nEnvironment=XUI_AETHER_BINARY=/usr/local/bin/aether-test-wrapper\n' | sudo tee /etc/systemd/system/x-ui.service.d/aether-test.conf >/dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl restart x-ui
+      - name: Save twenty Aether outbounds and verify routing without direct fallback
+        if: matrix.arch == 'amd64'
+        env:
+          XUI_AETHER_TEST_URI: "aether://162.159.198.223:443?protocol=masque&scan=balanced&ip=v4&transport=h2#aether-nineteenth"
+        run: |
+          sudo --preserve-env=XUI_AETHER_TEST_URI bash -ec '
+            source /etc/x-ui/install-result.env
+            export XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+            export XUI_AETHER_MULTIPLE=1
+            exec python3 scripts/smoke-aether-client.py
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.arch }}
+          path: packages/
+  publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: packages
+      - name: Publish the tested packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "This release already exists. Use a new release tag for updates."
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "3x-ui Aether native Linux" --notes "Native Ubuntu/Debian systemd packages with Aether. See AETHER.fa.md in the release source." \
+            packages/*.tar.gz packages/*.sha256

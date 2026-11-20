@@ -1,20 +1,26 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/delegation"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
@@ -204,6 +210,10 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	delegatedBlocked, err := delegation.BlockedClients(database.GetDB())
+	if err != nil {
+		return nil, err
+	}
 	excludedClients, excludedInbounds := 0, 0
 	for _, inbound := range inbounds {
 		if !inbound.Enable {
@@ -256,7 +266,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 				excludedClients++
 				continue
 			}
-			if !c.Enable {
+			if !c.Enable || delegatedBlocked[inbound.Id][c.Email] {
 				continue
 			}
 			flow := c.Flow
@@ -499,6 +509,16 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	if excludedClients > 0 {
 		logger.Infof("Xray config generated: excluded %d disabled client entries across %d inbounds", excludedClients, excludedInbounds)
 	}
+	reservedBridgePorts := make(map[int]bool, len(xrayConfig.InboundConfigs))
+	for _, inbound := range xrayConfig.InboundConfigs {
+		reservedBridgePorts[inbound.Port] = true
+	}
+	bridged, desired, bridgeErr := aether.LiveManager().Render(xrayConfig.OutboundConfigs, "live", reservedBridgePorts)
+	if bridgeErr != nil {
+		return nil, bridgeErr
+	}
+	xrayConfig.OutboundConfigs = json_util.RawMessage(bridged)
+	xrayConfig.AetherOutbounds = desired
 	return xrayConfig, nil
 }
 
@@ -1501,12 +1521,21 @@ func (s *XrayService) TestRoute(req xray.RouteTestRequest) (*xray.RouteTestResul
 	return s.xrayAPI.TestRoute(req)
 }
 
+var delegatedDisconnect atomic.Bool
+
+// ScheduleDelegatedDisconnect reapplies entitlement changes and closes already
+// authenticated connections when an account is suspended or exceeds its cap.
+func (s *XrayService) ScheduleDelegatedDisconnect() {
+	delegatedDisconnect.Store(true)
+	s.SetToNeedReconcile()
+}
+
 // RestartXray reconciles the running Xray process with the current desired
 // config. When isForce is false it first tries to apply the changes through
 // the Xray gRPC API without restarting the process (inbounds, outbounds and
 // routing rules/balancers are hot-reloadable); only changes the core cannot
 // take at runtime — or a force request — stop and restart the process.
-func (s *XrayService) RestartXray(isForce bool) error {
+func (s *XrayService) RestartXray(isForce bool) (restartErr error) {
 	lock.Lock()
 	defer lock.Unlock()
 	logger.Debug("restart Xray, force:", isForce)
@@ -1514,6 +1543,14 @@ func (s *XrayService) RestartXray(isForce bool) error {
 		return nil
 	}
 	isManuallyStopped.Store(false)
+	if delegatedDisconnect.Swap(false) {
+		isForce = true
+		defer func() {
+			if restartErr != nil {
+				s.ScheduleDelegatedDisconnect()
+			}
+		}()
+	}
 
 	xrayConfig, err := s.GetXrayConfig()
 	if err != nil {
@@ -1524,6 +1561,45 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	}
 
 	process := currentXrayProcess()
+	var previous []aether.Desired
+	if process != nil {
+		previous = process.GetConfig().AetherOutbounds
+	}
+	manager := aether.LiveManager()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	failures := manager.EnsureAvailableListeners(ctx, xrayConfig.AetherOutbounds)
+	if len(failures) > 0 {
+		blocked, err := aether.BlockUnavailable(xrayConfig.OutboundConfigs, failures)
+		if err != nil {
+			manager.Retain(previous)
+			return err
+		}
+		xrayConfig.OutboundConfigs = json_util.RawMessage(blocked)
+		s.SetToNeedReconcile()
+	}
+	defer func() {
+		if restartErr != nil {
+			return
+		}
+		if len(failures) > 0 {
+			tags := slices.Sorted(maps.Keys(failures))
+			message := "Aether bridges unavailable, traffic blocked: " + strings.Join(tags, ", ")
+			for _, tag := range tags {
+				logger.Warning(failures[tag].Error())
+			}
+			xrayState.holdBack(message)
+		} else if strings.HasPrefix(xrayState.heldBackReason(), "Aether bridges unavailable,") {
+			xrayState.holdBack("")
+		}
+	}()
+	defer func() {
+		if restartErr != nil {
+			manager.Retain(previous)
+		} else {
+			manager.Retain(xrayConfig.AetherOutbounds)
+		}
+	}()
 	if process != nil && process.IsRunning() {
 		configUnchanged := process.GetConfig().Equals(xrayConfig)
 		if !isForce && configUnchanged && !isNeedXrayRestart.Load() {
@@ -1796,6 +1872,7 @@ func addOutboundReconciling(api *xray.XrayAPI, outbound []byte) error {
 func (s *XrayService) StopXray() error {
 	lock.Lock()
 	defer lock.Unlock()
+	defer aether.LiveManager().StopAll()
 	isManuallyStopped.Store(true)
 	logger.Debug("Attempting to stop Xray...")
 	process := currentXrayProcess()

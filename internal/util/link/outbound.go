@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/maskcompat"
 )
 
@@ -165,6 +166,20 @@ func nestsWithin(v any, depth int) bool {
 
 func parseLinkByScheme(link string) (*ParseResult, error) {
 	switch {
+	case strings.HasPrefix(link, "aether://"):
+		c, err := aether.ParseURI(link)
+		if err != nil {
+			return nil, err
+		}
+		u, err := url.Parse(link)
+		if err != nil {
+			return nil, err
+		}
+		identity, err := json.Marshal(c)
+		if err != nil {
+			return nil, err
+		}
+		return &ParseResult{Outbound: Outbound{"protocol": "aether", "tag": u.Fragment, "settings": map[string]any{"uri": link}}, Identity: "aether:" + string(identity)}, nil
 	case strings.HasPrefix(link, "vmess://"):
 		return parseVmess(link)
 	case strings.HasPrefix(link, "vless://"):

@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Popover, Space, Tag, Tooltip } from 'antd';
@@ -49,26 +50,30 @@ export const ClientRowActions = memo(function ClientRowActions({
           onClick={() => onShowQr(email)}
         />
       </Tooltip>
-      <Tooltip title={t('pages.clients.clientInfo')}>
-        <Button
-          size="small"
-          type="text"
-          style={ICON_BUTTON_STYLE}
-          icon={<InfoCircleOutlined aria-hidden />}
-          aria-label={t('pages.clients.clientInfo')}
-          onClick={() => onShowInfo(email)}
-        />
-      </Tooltip>
-      <Tooltip title={t('pages.inbounds.resetTraffic')}>
-        <Button
-          size="small"
-          type="text"
-          style={ICON_BUTTON_STYLE}
-          icon={<RetweetOutlined aria-hidden />}
-          aria-label={t('pages.inbounds.resetTraffic')}
-          onClick={() => onResetTraffic(email)}
-        />
-      </Tooltip>
+      {!isDelegatedPanel && (
+        <Tooltip title={t('pages.clients.clientInfo')}>
+          <Button
+            size="small"
+            type="text"
+            style={ICON_BUTTON_STYLE}
+            icon={<InfoCircleOutlined aria-hidden />}
+            aria-label={t('pages.clients.clientInfo')}
+            onClick={() => onShowInfo(email)}
+          />
+        </Tooltip>
+      )}
+      {!isDelegatedPanel && (
+        <Tooltip title={t('pages.inbounds.resetTraffic')}>
+          <Button
+            size="small"
+            type="text"
+            style={ICON_BUTTON_STYLE}
+            icon={<RetweetOutlined aria-hidden />}
+            aria-label={t('pages.inbounds.resetTraffic')}
+            onClick={() => onResetTraffic(email)}
+          />
+        </Tooltip>
+      )}
       <Tooltip title={t('edit')}>
         <Button
           size="small"
@@ -79,17 +84,19 @@ export const ClientRowActions = memo(function ClientRowActions({
           onClick={() => onEdit(email)}
         />
       </Tooltip>
-      <Tooltip title={t('delete')}>
-        <Button
-          size="small"
-          type="text"
-          danger
-          style={ICON_BUTTON_STYLE}
-          icon={<DeleteOutlined aria-hidden />}
-          aria-label={t('delete')}
-          onClick={() => onDelete(email)}
-        />
-      </Tooltip>
+      {!isDelegatedPanel && (
+        <Tooltip title={t('delete')}>
+          <Button
+            size="small"
+            type="text"
+            danger
+            style={ICON_BUTTON_STYLE}
+            icon={<DeleteOutlined aria-hidden />}
+            aria-label={t('delete')}
+            onClick={() => onDelete(email)}
+          />
+        </Tooltip>
+      )}
     </Space>
   );
 });

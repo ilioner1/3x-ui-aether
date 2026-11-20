@@ -12,6 +12,7 @@ interface PromptModalProps {
   okText?: string;
   type?: 'input' | 'textarea';
   initialValue?: string;
+  placeholder?: string;
   loading?: boolean;
   json?: boolean;
   onConfirm: (value: string) => void;
@@ -24,6 +25,7 @@ export default function PromptModal({
   okText,
   type = 'input',
   initialValue = '',
+  placeholder,
   loading = false,
   json = false,
   onConfirm,
@@ -83,6 +85,7 @@ export default function PromptModal({
                 ?.resizableTextArea?.textArea ?? null;
           }}
           aria-label={title}
+          placeholder={placeholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           autoSize={{ minRows: 10, maxRows: 20 }}
@@ -92,6 +95,7 @@ export default function PromptModal({
         <Input
           ref={inputRef}
           aria-label={title}
+          placeholder={placeholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeydown}

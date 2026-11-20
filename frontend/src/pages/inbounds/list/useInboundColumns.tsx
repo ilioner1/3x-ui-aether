@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useMemo, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Popover, Switch, Tag, Tooltip, type TableColumnType } from 'antd';
@@ -468,7 +469,9 @@ export function useInboundColumns({
       },
     );
 
-    return cols;
+    return isDelegatedPanel
+      ? cols.filter((col) => ['id', 'remark', 'port', 'protocol'].includes(String(col.key)))
+      : cols;
   }, [
     t,
     hasAnyRemark,

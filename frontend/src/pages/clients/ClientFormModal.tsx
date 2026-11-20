@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -273,6 +274,9 @@ export default function ClientFormModal({
   const delayedStart = useWatch({ control: methods.control, name: 'delayedStart' });
   const delayedDays = useWatch({ control: methods.control, name: 'delayedDays' });
   const expiryDate = useWatch({ control: methods.control, name: 'expiryDate' });
+  const delegatedInboundOptions = inbounds
+    .filter((inbound) => inbound.enable)
+    .map((inbound) => ({ label: inbound.remark || inbound.tag, value: inbound.id }));
   const enable = useWatch({ control: methods.control, name: 'enable' });
   const flow = useWatch({ control: methods.control, name: 'flow' });
   const reverseTag = useWatch({ control: methods.control, name: 'reverseTag' });
@@ -714,6 +718,35 @@ export default function ClientFormModal({
 
   async function onSubmit() {
     const values = methods.getValues();
+    if (isDelegatedPanel) {
+      const comment = (isEdit ? values.comment : values.email).trim();
+      const totalGB = resolveTotalBytes(client ? (client.totalGB ?? 0) : null, values.totalGB);
+      if (!comment || (!isEdit && values.inboundIds.length === 0)) {
+        messageApi.error(t('somethingWentWrong'));
+        return;
+      }
+      const payload = { comment, totalGB, enable: values.enable };
+      setSubmitting(true);
+      try {
+        const msg =
+          isEdit && client
+            ? await save(payload, {
+                isEdit: true,
+                email: client.email,
+                attach: [],
+                detach: [],
+                externalLinks: [],
+              })
+            : await save(
+                { client: payload, inboundIds: values.inboundIds },
+                { isEdit: false, email: '', externalLinks: [] },
+              );
+        if (msg?.success) close();
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     const unchangedLegacyKeepAlive =
       isEdit &&
       typeof client?.keepAlive === 'number' &&
@@ -938,778 +971,834 @@ export default function ClientFormModal({
       >
         <FormProvider {...methods}>
           <Form layout="vertical">
-            <Tabs
-              defaultActiveKey="basic"
-              items={[
-                {
-                  key: 'basic',
-                  label: t('pages.clients.tabBasics'),
-                  children: (
-                    <>
-                      <Row gutter={16}>
-                        <Col xs={24} md={12}>
-                          <Form.Item
-                            label={t('pages.clients.email')}
-                            required
-                            htmlFor={`${uid}-email`}
-                          >
-                            <Space.Compact style={{ display: 'flex' }}>
-                              <Input
-                                id={`${uid}-email`}
-                                value={email}
-                                placeholder={t('pages.clients.email')}
-                                style={{ flex: 1 }}
-                                onChange={(e) => methods.setValue('email', e.target.value)}
-                              />
-                              {!isEdit && (
-                                <Button
-                                  aria-label={t('regenerate')}
-                                  icon={<ReloadOutlined aria-hidden />}
-                                  onClick={() =>
-                                    methods.setValue('email', RandomUtil.randomLowerAndNum(12))
-                                  }
+            {isDelegatedPanel ? (
+              <>
+                {isEdit ? (
+                  <FormField name="comment" label={t('pages.clients.comment')} required>
+                    <Input maxLength={100} />
+                  </FormField>
+                ) : (
+                  <>
+                    <FormField name="email" label={t('pages.clients.email')} required>
+                      <Input maxLength={100} />
+                    </FormField>
+                    <Form.Item
+                      label={t('pages.clients.attachedInbounds')}
+                      htmlFor={`${uid}-delegate-inbound`}
+                      required
+                    >
+                      <SelectAllClearButtons
+                        options={delegatedInboundOptions}
+                        value={inboundIds}
+                        onChange={handleInboundChange}
+                      />
+                      <Select
+                        id={`${uid}-delegate-inbound`}
+                        mode="multiple"
+                        tagRender={selectTagRender}
+                        value={inboundIds}
+                        onChange={handleInboundChange}
+                        options={delegatedInboundOptions}
+                        placeholder={t('pages.clients.selectInbound')}
+                      />
+                    </Form.Item>
+                  </>
+                )}
+                <FormField name="totalGB" label={t('pages.clients.totalGB')}>
+                  <InputNumber min={0} max={1000000} style={{ width: '100%' }} />
+                </FormField>
+                <Form.Item label={t('pages.clients.enabled')} htmlFor={`${uid}-delegate-enabled`}>
+                  <Switch
+                    id={`${uid}-delegate-enabled`}
+                    checked={enable}
+                    onChange={(next) => methods.setValue('enable', next)}
+                  />
+                </Form.Item>
+              </>
+            ) : (
+              <Tabs
+                defaultActiveKey="basic"
+                items={[
+                  {
+                    key: 'basic',
+                    label: t('pages.clients.tabBasics'),
+                    children: (
+                      <>
+                        <Row gutter={16}>
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              label={t('pages.clients.email')}
+                              required
+                              htmlFor={`${uid}-email`}
+                            >
+                              <Space.Compact style={{ display: 'flex' }}>
+                                <Input
+                                  id={`${uid}-email`}
+                                  value={email}
+                                  placeholder={t('pages.clients.email')}
+                                  style={{ flex: 1 }}
+                                  onChange={(e) => methods.setValue('email', e.target.value)}
                                 />
-                              )}
-                            </Space.Compact>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} md={12}>
-                          <FormField
-                            name="totalGB"
-                            label={t('pages.clients.totalGB')}
-                            tooltip={t('pages.clients.totalGBDesc')}
-                            transform={{ output: (v) => Number(v) || 0 }}
-                          >
-                            <InputNumber min={0} step={1} style={{ width: '100%' }} />
-                          </FormField>
-                        </Col>
-                        <Col xs={24} md={12}>
-                          <Form.Item
-                            htmlFor={`${uid}-limit-ip`}
-                            label={t('pages.clients.limitIp')}
-                            tooltip={t('pages.clients.limitIpDesc')}
-                          >
-                            <Tooltip title={limitIpNotice || undefined}>
-                              <span style={{ display: 'flex', width: '100%' }}>
-                                <Space.Compact style={{ display: 'flex', flex: 1 }}>
-                                  <InputNumber
-                                    id={`${uid}-limit-ip`}
-                                    aria-describedby={`${uid}-limit-ip-hint`}
-                                    value={limitIp}
-                                    min={0}
-                                    disabled={limitIpDisabled}
-                                    style={{
-                                      flex: 1,
-                                      ...(limitIpDisabled ? { pointerEvents: 'none' } : null),
-                                    }}
-                                    onChange={(v) => methods.setValue('limitIp', Number(v) || 0)}
-                                  />
-                                  {isEdit && (
-                                    <Tooltip title={t('pages.clients.ipLog')}>
-                                      <Button
-                                        aria-label={t('pages.clients.ipLog')}
-                                        icon={<EyeOutlined aria-hidden />}
-                                        loading={ipsLoading}
-                                        onClick={openIpsModal}
-                                      >
-                                        {clientIps.length > 0 ? clientIps.length : ''}
-                                      </Button>
-                                    </Tooltip>
-                                  )}
-                                </Space.Compact>
-                              </span>
-                            </Tooltip>
-                            <span id={`${uid}-limit-ip-hint`} hidden>
-                              {t('pages.clients.limitIpDesc')}
-                            </span>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} md={12}>
-                          <Form.Item
-                            htmlFor={`${uid}-limit-hwid`}
-                            label={t('pages.clients.limitHwid')}
-                            tooltip={t('pages.clients.limitHwidDesc')}
-                          >
-                            <Space.Compact style={{ display: 'flex' }}>
-                              <InputNumber
-                                id={`${uid}-limit-hwid`}
-                                aria-describedby={`${uid}-limit-hwid-hint`}
-                                value={limitHwid}
-                                min={0}
-                                style={{ flex: 1 }}
-                                onChange={(v) => methods.setValue('limitHwid', Number(v) || 0)}
-                              />
-                              {isEdit && (
-                                <Tooltip title={t('pages.clients.hwidLog')}>
+                                {!isEdit && (
                                   <Button
-                                    aria-label={t('pages.clients.hwidLog')}
-                                    icon={<EyeOutlined aria-hidden />}
-                                    loading={hwidsLoading}
-                                    onClick={openHwidsModal}
-                                  >
-                                    {clientHwids.length > 0 ? clientHwids.length : ''}
-                                  </Button>
-                                </Tooltip>
-                              )}
-                            </Space.Compact>
-                            <span id={`${uid}-limit-hwid-hint`} hidden>
-                              {t('pages.clients.limitHwidDesc')}
-                            </span>
-                          </Form.Item>
-                        </Col>
-                      </Row>
-
-                      <Row gutter={16}>
-                        <Col xs={24} md={12}>
-                          {delayedStart ? (
+                                    aria-label={t('regenerate')}
+                                    icon={<ReloadOutlined aria-hidden />}
+                                    onClick={() =>
+                                      methods.setValue('email', RandomUtil.randomLowerAndNum(12))
+                                    }
+                                  />
+                                )}
+                              </Space.Compact>
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} md={12}>
                             <FormField
-                              name="delayedDays"
-                              label={t('pages.clients.expireDays')}
+                              name="totalGB"
+                              label={t('pages.clients.totalGB')}
+                              tooltip={t('pages.clients.totalGBDesc')}
                               transform={{ output: (v) => Number(v) || 0 }}
                             >
-                              <InputNumber min={0} style={{ width: '100%' }} />
+                              <InputNumber min={0} step={1} style={{ width: '100%' }} />
                             </FormField>
-                          ) : (
+                          </Col>
+                          <Col xs={24} md={12}>
                             <Form.Item
-                              label={t('pages.clients.expiryTime')}
-                              htmlFor={`${uid}-expiry`}
+                              htmlFor={`${uid}-limit-ip`}
+                              label={t('pages.clients.limitIp')}
+                              tooltip={t('pages.clients.limitIpDesc')}
                             >
-                              <DateTimePicker
-                                id={`${uid}-expiry`}
-                                value={expiryDayjs}
-                                onChange={(d) =>
-                                  methods.setValue('expiryDate', d ? d.valueOf() : 0)
-                                }
+                              <Tooltip title={limitIpNotice || undefined}>
+                                <span style={{ display: 'flex', width: '100%' }}>
+                                  <Space.Compact style={{ display: 'flex', flex: 1 }}>
+                                    <InputNumber
+                                      id={`${uid}-limit-ip`}
+                                      aria-describedby={`${uid}-limit-ip-hint`}
+                                      value={limitIp}
+                                      min={0}
+                                      disabled={limitIpDisabled}
+                                      style={{
+                                        flex: 1,
+                                        ...(limitIpDisabled ? { pointerEvents: 'none' } : null),
+                                      }}
+                                      onChange={(v) => methods.setValue('limitIp', Number(v) || 0)}
+                                    />
+                                    {isEdit && (
+                                      <Tooltip title={t('pages.clients.ipLog')}>
+                                        <Button
+                                          aria-label={t('pages.clients.ipLog')}
+                                          icon={<EyeOutlined aria-hidden />}
+                                          loading={ipsLoading}
+                                          onClick={openIpsModal}
+                                        >
+                                          {clientIps.length > 0 ? clientIps.length : ''}
+                                        </Button>
+                                      </Tooltip>
+                                    )}
+                                  </Space.Compact>
+                                </span>
+                              </Tooltip>
+                              <span id={`${uid}-limit-ip-hint`} hidden>
+                                {t('pages.clients.limitIpDesc')}
+                              </span>
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              htmlFor={`${uid}-limit-hwid`}
+                              label={t('pages.clients.limitHwid')}
+                              tooltip={t('pages.clients.limitHwidDesc')}
+                            >
+                              <Space.Compact style={{ display: 'flex' }}>
+                                <InputNumber
+                                  id={`${uid}-limit-hwid`}
+                                  aria-describedby={`${uid}-limit-hwid-hint`}
+                                  value={limitHwid}
+                                  min={0}
+                                  style={{ flex: 1 }}
+                                  onChange={(v) => methods.setValue('limitHwid', Number(v) || 0)}
+                                />
+                                {isEdit && (
+                                  <Tooltip title={t('pages.clients.hwidLog')}>
+                                    <Button
+                                      aria-label={t('pages.clients.hwidLog')}
+                                      icon={<EyeOutlined aria-hidden />}
+                                      loading={hwidsLoading}
+                                      onClick={openHwidsModal}
+                                    >
+                                      {clientHwids.length > 0 ? clientHwids.length : ''}
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                              </Space.Compact>
+                              <span id={`${uid}-limit-hwid-hint`} hidden>
+                                {t('pages.clients.limitHwidDesc')}
+                              </span>
+                            </Form.Item>
+                          </Col>
+                        </Row>
+
+                        <Row gutter={16}>
+                          <Col xs={24} md={12}>
+                            {delayedStart ? (
+                              <FormField
+                                name="delayedDays"
+                                label={t('pages.clients.expireDays')}
+                                transform={{ output: (v) => Number(v) || 0 }}
+                              >
+                                <InputNumber min={0} style={{ width: '100%' }} />
+                              </FormField>
+                            ) : (
+                              <Form.Item
+                                label={t('pages.clients.expiryTime')}
+                                htmlFor={`${uid}-expiry`}
+                              >
+                                <DateTimePicker
+                                  id={`${uid}-expiry`}
+                                  value={expiryDayjs}
+                                  onChange={(d) =>
+                                    methods.setValue('expiryDate', d ? d.valueOf() : 0)
+                                  }
+                                />
+                              </Form.Item>
+                            )}
+                          </Col>
+                          <Col xs={12} md={6}>
+                            <Form.Item
+                              label={t('pages.clients.delayedStart')}
+                              htmlFor={`${uid}-delayed-start`}
+                            >
+                              <Switch
+                                id={`${uid}-delayed-start`}
+                                checked={delayedStart}
+                                onChange={(v) => {
+                                  methods.setValue('delayedStart', v);
+                                  if (v) methods.setValue('expiryDate', 0);
+                                  else methods.setValue('delayedDays', 0);
+                                }}
                               />
                             </Form.Item>
-                          )}
-                        </Col>
-                        <Col xs={12} md={6}>
-                          <Form.Item
-                            label={t('pages.clients.delayedStart')}
-                            htmlFor={`${uid}-delayed-start`}
-                          >
-                            <Switch
-                              id={`${uid}-delayed-start`}
-                              checked={delayedStart}
-                              onChange={(v) => {
-                                methods.setValue('delayedStart', v);
-                                if (v) methods.setValue('expiryDate', 0);
-                                else methods.setValue('delayedDays', 0);
-                              }}
-                            />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-
-                      <Row gutter={16}>
-                        <Col xs={24} md={12}>
-                          <FormField
-                            name="trafficReset"
-                            label={t('pages.inbounds.periodicTrafficResetTitle')}
-                          >
-                            <Select
-                              options={TRAFFIC_RESETS.map((r) => ({
-                                value: r,
-                                label: t(`pages.inbounds.periodicTrafficReset.${r}`),
-                              }))}
-                            />
-                          </FormField>
-                        </Col>
-                        {trafficReset === 'monthly' && (
-                          <Col xs={24} md={12}>
-                            <FormField
-                              name="trafficResetDay"
-                              label={t('pages.inbounds.periodicTrafficResetDay')}
-                              transform={{ output: (v) => Number(v) || 1 }}
-                            >
-                              <InputNumber min={1} max={31} style={{ width: '100%' }} />
-                            </FormField>
                           </Col>
-                        )}
-                      </Row>
+                        </Row>
 
-                      <ClientRenewalFields
-                        active={open}
-                        delayedStart={delayedStart}
-                        expiryTime={delayedStart ? -86400000 * (delayedDays || 0) : expiryDate || 0}
-                        resetCount={client?.traffic?.resetCount || 0}
-                        setExpiry={(expiry) => methods.setValue('expiryDate', expiry)}
-                      />
-
-                      <Row gutter={16}>
-                        <Col xs={24} md={12}>
-                          <FormField name="comment" label={t('pages.clients.comment')}>
-                            <Input />
-                          </FormField>
-                        </Col>
-                        <Col xs={24} md={12}>
-                          <FormField
-                            name="group"
-                            label={t('pages.clients.group')}
-                            tooltip={t('pages.clients.groupDesc')}
-                            transform={{ output: (v) => v ?? '' }}
-                          >
-                            <AutoComplete
-                              placeholder={t('pages.clients.groupPlaceholder')}
-                              options={groups.map((g) => ({ value: g }))}
-                              allowClear
-                            />
-                          </FormField>
-                        </Col>
-                      </Row>
-
-                      <Row gutter={16}>
-                        <Col xs={24} md={12}>
-                          <Form.Item
-                            label={t('pages.clients.hostRuleOverride')}
-                            htmlFor={`${uid}-host-rule-override`}
-                          >
-                            <Select
-                              id={`${uid}-host-rule-override`}
-                              mode="multiple"
-                              tagRender={selectTagRender}
-                              value={clientHostRuleIds || []}
-                              onChange={(v) => methods.setValue('clientHostRuleIds', v)}
-                              options={hostRuleOptions}
-                              placeholder={t('pages.clients.hostRuleOverridePlaceholder')}
-                              placement="topLeft"
-                              listHeight={220}
-                              allowClear
-                              showSearch={{
-                                filterOption: (input, option) =>
-                                  ((option?.label as string) || '')
-                                    .toLowerCase()
-                                    .includes(input.toLowerCase()),
-                              }}
-                            />
-                          </Form.Item>
-                        </Col>
-                        {showReverseTag && (
-                          <Col xs={24} md={12}>
-                            <FormField name="reverseTag" label={t('pages.clients.reverseTag')}>
-                              <Input placeholder={t('pages.clients.reverseTagPlaceholder')} />
-                            </FormField>
-                          </Col>
-                        )}
-                      </Row>
-
-                      {tgBotEnable && (
                         <Row gutter={16}>
                           <Col xs={24} md={12}>
                             <FormField
-                              name="tgId"
-                              label={t('pages.clients.telegramId')}
-                              transform={{ output: (v) => Number(v) || 0 }}
+                              name="trafficReset"
+                              label={t('pages.inbounds.periodicTrafficResetTitle')}
                             >
-                              <InputNumber
-                                min={0}
-                                controls={false}
-                                placeholder={t('pages.clients.telegramIdPlaceholder')}
-                                style={{ width: '100%' }}
+                              <Select
+                                options={TRAFFIC_RESETS.map((r) => ({
+                                  value: r,
+                                  label: t(`pages.inbounds.periodicTrafficReset.${r}`),
+                                }))}
+                              />
+                            </FormField>
+                          </Col>
+                          {trafficReset === 'monthly' && (
+                            <Col xs={24} md={12}>
+                              <FormField
+                                name="trafficResetDay"
+                                label={t('pages.inbounds.periodicTrafficResetDay')}
+                                transform={{ output: (v) => Number(v) || 1 }}
+                              >
+                                <InputNumber min={1} max={31} style={{ width: '100%' }} />
+                              </FormField>
+                            </Col>
+                          )}
+                        </Row>
+
+                        <ClientRenewalFields
+                          active={open}
+                          delayedStart={delayedStart}
+                          expiryTime={
+                            delayedStart ? -86400000 * (delayedDays || 0) : expiryDate || 0
+                          }
+                          resetCount={client?.traffic?.resetCount || 0}
+                          setExpiry={(expiry) => methods.setValue('expiryDate', expiry)}
+                        />
+
+                        <Row gutter={16}>
+                          <Col xs={24} md={12}>
+                            <FormField name="comment" label={t('pages.clients.comment')}>
+                              <Input />
+                            </FormField>
+                          </Col>
+                          <Col xs={24} md={12}>
+                            <FormField
+                              name="group"
+                              label={t('pages.clients.group')}
+                              tooltip={t('pages.clients.groupDesc')}
+                              transform={{ output: (v) => v ?? '' }}
+                            >
+                              <AutoComplete
+                                placeholder={t('pages.clients.groupPlaceholder')}
+                                options={groups.map((g) => ({ value: g }))}
+                                allowClear
                               />
                             </FormField>
                           </Col>
                         </Row>
-                      )}
 
-                      <Form.Item
-                        label={t('pages.clients.attachedInbounds')}
-                        required={!isEdit}
-                        htmlFor={`${uid}-inbounds`}
-                      >
-                        <SelectAllClearButtons
-                          options={inboundOptions}
-                          value={inboundIds}
-                          onChange={handleInboundChange}
-                        />
-                        <Select
-                          id={`${uid}-inbounds`}
-                          mode="multiple"
-                          tagRender={selectTagRender}
-                          value={inboundIds}
-                          onChange={handleInboundChange}
-                          options={inboundOptions}
-                          placeholder={t('pages.clients.selectInbound')}
-                          placement="topLeft"
-                          listHeight={220}
-                          showSearch={{
-                            filterOption: (input, option) =>
-                              ((option?.label as string) || '')
-                                .toLowerCase()
-                                .includes(input.toLowerCase()),
-                          }}
-                        />
-                      </Form.Item>
-
-                      <Form.Item>
-                        <Switch
-                          aria-label={t('enable')}
-                          checked={enable}
-                          onChange={(v) => methods.setValue('enable', v)}
-                        />
-                        <span style={{ marginLeft: 8 }}>{t('enable')}</span>
-                      </Form.Item>
-                    </>
-                  ),
-                },
-                {
-                  key: 'config',
-                  label: t('pages.clients.tabCredentials'),
-                  children: (
-                    <>
-                      <Form.Item label={t('pages.clients.uuid')} htmlFor={`${uid}-uuid`}>
-                        <Space.Compact style={{ display: 'flex' }}>
-                          <Input
-                            id={`${uid}-uuid`}
-                            value={uuid}
-                            style={{ flex: 1 }}
-                            onChange={(e) => methods.setValue('uuid', e.target.value)}
-                          />
-                          <Button
-                            aria-label={t('regenerate')}
-                            icon={<ReloadOutlined aria-hidden />}
-                            onClick={() => methods.setValue('uuid', RandomUtil.randomUUID())}
-                          />
-                        </Space.Compact>
-                      </Form.Item>
-
-                      <Form.Item
-                        htmlFor={`${uid}-password`}
-                        label={t('pages.clients.password')}
-                        tooltip={t('pages.clients.passwordDesc')}
-                      >
-                        <Space.Compact style={{ display: 'flex' }}>
-                          <Input
-                            id={`${uid}-password`}
-                            aria-describedby={`${uid}-password-hint`}
-                            value={password}
-                            style={{ flex: 1 }}
-                            onChange={(e) => methods.setValue('password', e.target.value)}
-                          />
-                          <Button
-                            aria-label={t('regenerate')}
-                            icon={<ReloadOutlined aria-hidden />}
-                            onClick={regeneratePassword}
-                          />
-                        </Space.Compact>
-                        <span id={`${uid}-password-hint`} hidden>
-                          {t('pages.clients.passwordDesc')}
-                        </span>
-                      </Form.Item>
-
-                      <Form.Item
-                        htmlFor={`${uid}-sub-id`}
-                        label={t('pages.clients.subId')}
-                        tooltip={t('pages.clients.subIdDesc')}
-                      >
-                        <Space.Compact style={{ display: 'flex' }}>
-                          <Input
-                            id={`${uid}-sub-id`}
-                            aria-describedby={`${uid}-sub-id-hint`}
-                            value={subId}
-                            style={{ flex: 1 }}
-                            onChange={(e) => methods.setValue('subId', e.target.value)}
-                          />
-                          <Button
-                            aria-label={t('regenerate')}
-                            icon={<ReloadOutlined aria-hidden />}
-                            onClick={() =>
-                              methods.setValue('subId', RandomUtil.randomLowerAndNum(16))
-                            }
-                          />
-                        </Space.Compact>
-                        <span id={`${uid}-sub-id-hint`} hidden>
-                          {t('pages.clients.subIdDesc')}
-                        </span>
-                      </Form.Item>
-
-                      <Form.Item
-                        htmlFor={`${uid}-auth`}
-                        label={t('pages.clients.hysteriaAuth')}
-                        tooltip={t('pages.clients.hysteriaAuthDesc')}
-                      >
-                        <Space.Compact style={{ display: 'flex' }}>
-                          <Input
-                            id={`${uid}-auth`}
-                            aria-describedby={`${uid}-auth-hint`}
-                            value={auth}
-                            style={{ flex: 1 }}
-                            onChange={(e) => methods.setValue('auth', e.target.value)}
-                          />
-                          <Button
-                            aria-label={t('regenerate')}
-                            icon={<ReloadOutlined aria-hidden />}
-                            onClick={() =>
-                              methods.setValue('auth', RandomUtil.randomLowerAndNum(16))
-                            }
-                          />
-                        </Space.Compact>
-                        <span id={`${uid}-auth-hint`} hidden>
-                          {t('pages.clients.hysteriaAuthDesc')}
-                        </span>
-                      </Form.Item>
-
-                      {showFlow && (
-                        <FormField name="flow" label={t('pages.clients.flow')}>
-                          <Select
-                            options={[
-                              { value: '', label: t('none') },
-                              ...FLOW_OPTIONS.map((k) => ({ value: k, label: k })),
-                            ]}
-                          />
-                        </FormField>
-                      )}
-                      {showSecurity && (
-                        <FormField name="security" label={t('pages.clients.vmessSecurity')}>
-                          <Select
-                            options={VMESS_SECURITY_OPTIONS.map((k) => ({ value: k, label: k }))}
-                          />
-                        </FormField>
-                      )}
-                      {(showWireguard || showAmneziawg) && (
-                        <>
-                          <Form.Item
-                            htmlFor={`${uid}-wg-private-key`}
-                            label={t(
-                              showAmneziawg
-                                ? 'pages.clients.amneziaWgPrivateKey'
-                                : 'pages.clients.wireguardPrivateKey',
-                            )}
-                          >
-                            <Space.Compact style={{ display: 'flex' }}>
-                              <Input
-                                id={`${uid}-wg-private-key`}
-                                value={wgPrivateKey}
-                                style={{ flex: 1 }}
-                                onChange={(e) => {
-                                  const priv = e.target.value;
-                                  methods.setValue('wgPrivateKey', priv);
-                                  methods.setValue(
-                                    'wgPublicKey',
-                                    priv ? Wireguard.generateKeypair(priv).publicKey : '',
-                                  );
+                        <Row gutter={16}>
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              label={t('pages.clients.hostRuleOverride')}
+                              htmlFor={`${uid}-host-rule-override`}
+                            >
+                              <Select
+                                id={`${uid}-host-rule-override`}
+                                mode="multiple"
+                                tagRender={selectTagRender}
+                                value={clientHostRuleIds || []}
+                                onChange={(v) => methods.setValue('clientHostRuleIds', v)}
+                                options={hostRuleOptions}
+                                placeholder={t('pages.clients.hostRuleOverridePlaceholder')}
+                                placement="topLeft"
+                                listHeight={220}
+                                allowClear
+                                showSearch={{
+                                  filterOption: (input, option) =>
+                                    ((option?.label as string) || '')
+                                      .toLowerCase()
+                                      .includes(input.toLowerCase()),
                                 }}
                               />
-                              <Button
-                                aria-label={t('regenerate')}
-                                icon={<ReloadOutlined aria-hidden />}
-                                onClick={regenerateWireguardKeys}
-                              />
-                            </Space.Compact>
-                          </Form.Item>
-                          <FormField
-                            name="wgPublicKey"
-                            label={t(
-                              showAmneziawg
-                                ? 'pages.clients.amneziaWgPublicKey'
-                                : 'pages.clients.wireguardPublicKey',
-                            )}
-                          >
-                            <Input disabled />
-                          </FormField>
-                          <Form.Item
-                            htmlFor={`${uid}-wg-psk`}
-                            label={t(
-                              showAmneziawg
-                                ? 'pages.clients.amneziaWgPreSharedKey'
-                                : 'pages.clients.wireguardPreSharedKey',
-                            )}
-                          >
-                            <Space.Compact style={{ display: 'flex' }}>
-                              <FormField name="wgPreSharedKey" noStyle>
-                                <Input id={`${uid}-wg-psk`} style={{ flex: 1 }} />
+                            </Form.Item>
+                          </Col>
+                          {showReverseTag && (
+                            <Col xs={24} md={12}>
+                              <FormField name="reverseTag" label={t('pages.clients.reverseTag')}>
+                                <Input placeholder={t('pages.clients.reverseTagPlaceholder')} />
                               </FormField>
-                              <Button
-                                aria-label={t('regenerate')}
-                                icon={<ReloadOutlined aria-hidden />}
-                                onClick={regenerateWireguardPresharedKey}
-                              />
-                            </Space.Compact>
-                          </Form.Item>
-                          {showWireguard && showAmneziawg ? (
-                            <>
+                            </Col>
+                          )}
+                        </Row>
+
+                        {tgBotEnable && (
+                          <Row gutter={16}>
+                            <Col xs={24} md={12}>
+                              <FormField
+                                name="tgId"
+                                label={t('pages.clients.telegramId')}
+                                transform={{ output: (v) => Number(v) || 0 }}
+                              >
+                                <InputNumber
+                                  min={0}
+                                  controls={false}
+                                  placeholder={t('pages.clients.telegramIdPlaceholder')}
+                                  style={{ width: '100%' }}
+                                />
+                              </FormField>
+                            </Col>
+                          </Row>
+                        )}
+
+                        <Form.Item
+                          label={t('pages.clients.attachedInbounds')}
+                          required={!isEdit}
+                          htmlFor={`${uid}-inbounds`}
+                        >
+                          <SelectAllClearButtons
+                            options={inboundOptions}
+                            value={inboundIds}
+                            onChange={handleInboundChange}
+                          />
+                          <Select
+                            id={`${uid}-inbounds`}
+                            mode="multiple"
+                            tagRender={selectTagRender}
+                            value={inboundIds}
+                            onChange={handleInboundChange}
+                            options={inboundOptions}
+                            placeholder={t('pages.clients.selectInbound')}
+                            placement="topLeft"
+                            listHeight={220}
+                            showSearch={{
+                              filterOption: (input, option) =>
+                                ((option?.label as string) || '')
+                                  .toLowerCase()
+                                  .includes(input.toLowerCase()),
+                            }}
+                          />
+                        </Form.Item>
+
+                        <Form.Item>
+                          <Switch
+                            aria-label={t('enable')}
+                            checked={enable}
+                            onChange={(v) => methods.setValue('enable', v)}
+                          />
+                          <span style={{ marginLeft: 8 }}>{t('enable')}</span>
+                        </Form.Item>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'config',
+                    label: t('pages.clients.tabCredentials'),
+                    children: (
+                      <>
+                        <Form.Item label={t('pages.clients.uuid')} htmlFor={`${uid}-uuid`}>
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              id={`${uid}-uuid`}
+                              value={uuid}
+                              style={{ flex: 1 }}
+                              onChange={(e) => methods.setValue('uuid', e.target.value)}
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined aria-hidden />}
+                              onClick={() => methods.setValue('uuid', RandomUtil.randomUUID())}
+                            />
+                          </Space.Compact>
+                        </Form.Item>
+
+                        <Form.Item
+                          htmlFor={`${uid}-password`}
+                          label={t('pages.clients.password')}
+                          tooltip={t('pages.clients.passwordDesc')}
+                        >
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              id={`${uid}-password`}
+                              aria-describedby={`${uid}-password-hint`}
+                              value={password}
+                              style={{ flex: 1 }}
+                              onChange={(e) => methods.setValue('password', e.target.value)}
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined aria-hidden />}
+                              onClick={regeneratePassword}
+                            />
+                          </Space.Compact>
+                          <span id={`${uid}-password-hint`} hidden>
+                            {t('pages.clients.passwordDesc')}
+                          </span>
+                        </Form.Item>
+
+                        <Form.Item
+                          htmlFor={`${uid}-sub-id`}
+                          label={t('pages.clients.subId')}
+                          tooltip={t('pages.clients.subIdDesc')}
+                        >
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              id={`${uid}-sub-id`}
+                              aria-describedby={`${uid}-sub-id-hint`}
+                              value={subId}
+                              style={{ flex: 1 }}
+                              onChange={(e) => methods.setValue('subId', e.target.value)}
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined aria-hidden />}
+                              onClick={() =>
+                                methods.setValue('subId', RandomUtil.randomLowerAndNum(16))
+                              }
+                            />
+                          </Space.Compact>
+                          <span id={`${uid}-sub-id-hint`} hidden>
+                            {t('pages.clients.subIdDesc')}
+                          </span>
+                        </Form.Item>
+
+                        <Form.Item
+                          htmlFor={`${uid}-auth`}
+                          label={t('pages.clients.hysteriaAuth')}
+                          tooltip={t('pages.clients.hysteriaAuthDesc')}
+                        >
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              id={`${uid}-auth`}
+                              aria-describedby={`${uid}-auth-hint`}
+                              value={auth}
+                              style={{ flex: 1 }}
+                              onChange={(e) => methods.setValue('auth', e.target.value)}
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined aria-hidden />}
+                              onClick={() =>
+                                methods.setValue('auth', RandomUtil.randomLowerAndNum(16))
+                              }
+                            />
+                          </Space.Compact>
+                          <span id={`${uid}-auth-hint`} hidden>
+                            {t('pages.clients.hysteriaAuthDesc')}
+                          </span>
+                        </Form.Item>
+
+                        {showFlow && (
+                          <FormField name="flow" label={t('pages.clients.flow')}>
+                            <Select
+                              options={[
+                                { value: '', label: t('none') },
+                                ...FLOW_OPTIONS.map((k) => ({ value: k, label: k })),
+                              ]}
+                            />
+                          </FormField>
+                        )}
+                        {showSecurity && (
+                          <FormField name="security" label={t('pages.clients.vmessSecurity')}>
+                            <Select
+                              options={VMESS_SECURITY_OPTIONS.map((k) => ({ value: k, label: k }))}
+                            />
+                          </FormField>
+                        )}
+                        {(showWireguard || showAmneziawg) && (
+                          <>
+                            <Form.Item
+                              htmlFor={`${uid}-wg-private-key`}
+                              label={t(
+                                showAmneziawg
+                                  ? 'pages.clients.amneziaWgPrivateKey'
+                                  : 'pages.clients.wireguardPrivateKey',
+                              )}
+                            >
+                              <Space.Compact style={{ display: 'flex' }}>
+                                <Input
+                                  id={`${uid}-wg-private-key`}
+                                  value={wgPrivateKey}
+                                  style={{ flex: 1 }}
+                                  onChange={(e) => {
+                                    const priv = e.target.value;
+                                    methods.setValue('wgPrivateKey', priv);
+                                    methods.setValue(
+                                      'wgPublicKey',
+                                      priv ? Wireguard.generateKeypair(priv).publicKey : '',
+                                    );
+                                  }}
+                                />
+                                <Button
+                                  aria-label={t('regenerate')}
+                                  icon={<ReloadOutlined aria-hidden />}
+                                  onClick={regenerateWireguardKeys}
+                                />
+                              </Space.Compact>
+                            </Form.Item>
+                            <FormField
+                              name="wgPublicKey"
+                              label={t(
+                                showAmneziawg
+                                  ? 'pages.clients.amneziaWgPublicKey'
+                                  : 'pages.clients.wireguardPublicKey',
+                              )}
+                            >
+                              <Input disabled />
+                            </FormField>
+                            <Form.Item
+                              htmlFor={`${uid}-wg-psk`}
+                              label={t(
+                                showAmneziawg
+                                  ? 'pages.clients.amneziaWgPreSharedKey'
+                                  : 'pages.clients.wireguardPreSharedKey',
+                              )}
+                            >
+                              <Space.Compact style={{ display: 'flex' }}>
+                                <FormField name="wgPreSharedKey" noStyle>
+                                  <Input id={`${uid}-wg-psk`} style={{ flex: 1 }} />
+                                </FormField>
+                                <Button
+                                  aria-label={t('regenerate')}
+                                  icon={<ReloadOutlined aria-hidden />}
+                                  onClick={regenerateWireguardPresharedKey}
+                                />
+                              </Space.Compact>
+                            </Form.Item>
+                            {showWireguard && showAmneziawg ? (
+                              <>
+                                <FormField
+                                  name="wgAllowedIPs"
+                                  label={t('pages.clients.wireguardAllowedIPs')}
+                                  extra={t('pages.clients.wireguardAllowedIPsHint')}
+                                >
+                                  <Input placeholder="10.0.0.2/32" />
+                                </FormField>
+                                <FormField
+                                  name="awgAllowedIPs"
+                                  label={t('pages.clients.amneziaWgAllowedIPs')}
+                                  extra={t('pages.clients.amneziaWgAllowedIPsHint')}
+                                >
+                                  <Input placeholder="10.8.1.2/32" />
+                                </FormField>
+                              </>
+                            ) : (
                               <FormField
                                 name="wgAllowedIPs"
-                                label={t('pages.clients.wireguardAllowedIPs')}
-                                extra={t('pages.clients.wireguardAllowedIPsHint')}
-                              >
-                                <Input placeholder="10.0.0.2/32" />
-                              </FormField>
-                              <FormField
-                                name="awgAllowedIPs"
-                                label={t('pages.clients.amneziaWgAllowedIPs')}
-                                extra={t('pages.clients.amneziaWgAllowedIPsHint')}
+                                label={t(
+                                  showAmneziawg
+                                    ? 'pages.clients.amneziaWgAllowedIPs'
+                                    : 'pages.clients.wireguardAllowedIPs',
+                                )}
+                                extra={t(
+                                  showAmneziawg
+                                    ? 'pages.clients.amneziaWgAllowedIPsHint'
+                                    : 'pages.clients.wireguardAllowedIPsHint',
+                                )}
                               >
                                 <Input placeholder="10.8.1.2/32" />
                               </FormField>
-                            </>
-                          ) : (
+                            )}
                             <FormField
-                              name="wgAllowedIPs"
-                              label={t(
-                                showAmneziawg
-                                  ? 'pages.clients.amneziaWgAllowedIPs'
-                                  : 'pages.clients.wireguardAllowedIPs',
-                              )}
+                              name="wgKeepAlive"
+                              label={t('pages.clients.tunnelKeepAlive')}
                               extra={t(
-                                showAmneziawg
-                                  ? 'pages.clients.amneziaWgAllowedIPsHint'
-                                  : 'pages.clients.wireguardAllowedIPsHint',
-                              )}
-                            >
-                              <Input placeholder="10.8.1.2/32" />
-                            </FormField>
-                          )}
-                          <FormField
-                            name="wgKeepAlive"
-                            label={t('pages.clients.tunnelKeepAlive')}
-                            extra={t(
-                              showAmneziawg && !showWireguard
-                                ? 'pages.clients.amneziaWgKeepAliveHint'
-                                : 'pages.clients.tunnelKeepAliveHint',
-                            )}
-                            transform={{
-                              output:
                                 showAmneziawg && !showWireguard
-                                  ? keepAliveInputValue
-                                  : (value) => Number(value) || 0,
-                            }}
-                            rules={
-                              showAmneziawg
-                                ? {
-                                    validate: rhfZodValidate(
-                                      showWireguard
-                                        ? OptionalNumericKeepAliveInputSchema
-                                        : OptionalAmneziaWGKeepAliveInputSchema,
-                                    ),
-                                  }
-                                : undefined
-                            }
-                          >
-                            {showAmneziawg && !showWireguard ? (
-                              <Input placeholder="25" />
-                            ) : (
-                              <InputNumber min={0} max={65535} style={{ width: '100%' }} />
-                            )}
-                          </FormField>
-                          {showAmneziawg && (
-                            <FormField
-                              name="awgForwardedPorts"
-                              label={t('pages.clients.amneziaWgForwardedPorts')}
-                              extra={t('pages.clients.amneziaWgForwardedPortsHint')}
+                                  ? 'pages.clients.amneziaWgKeepAliveHint'
+                                  : 'pages.clients.tunnelKeepAliveHint',
+                              )}
+                              transform={{
+                                output:
+                                  showAmneziawg && !showWireguard
+                                    ? keepAliveInputValue
+                                    : (value) => Number(value) || 0,
+                              }}
+                              rules={
+                                showAmneziawg
+                                  ? {
+                                      validate: rhfZodValidate(
+                                        showWireguard
+                                          ? OptionalNumericKeepAliveInputSchema
+                                          : OptionalAmneziaWGKeepAliveInputSchema,
+                                      ),
+                                    }
+                                  : undefined
+                              }
                             >
-                              <Input placeholder="80, 443, 8000-8100" />
+                              {showAmneziawg && !showWireguard ? (
+                                <Input placeholder="25" />
+                              ) : (
+                                <InputNumber min={0} max={65535} style={{ width: '100%' }} />
+                              )}
                             </FormField>
-                          )}
-                        </>
-                      )}
-                      {showMtproto && (
-                        <>
-                          <Form.Item
-                            htmlFor={`${uid}-mtproto-secret`}
-                            label={t('pages.clients.mtprotoSecret')}
-                            extra={t('pages.clients.mtprotoSecretHint')}
-                          >
-                            <Space.Compact style={{ display: 'flex' }}>
-                              <Input
-                                id={`${uid}-mtproto-secret`}
-                                value={secret}
-                                style={{ flex: 1 }}
-                                onChange={(e) => methods.setValue('secret', e.target.value)}
-                              />
-                              <Button
-                                aria-label={t('regenerate')}
-                                icon={<ReloadOutlined aria-hidden />}
-                                onClick={regenerateMtprotoSecret}
-                              />
-                            </Space.Compact>
-                          </Form.Item>
-                          <FormField
-                            name="adTag"
-                            label={t('pages.clients.mtprotoAdTag')}
-                            extra={t('pages.clients.mtprotoAdTagHint')}
-                          >
-                            <Input allowClear placeholder="0123456789abcdef0123456789abcdef" />
-                          </FormField>
-                        </>
-                      )}
-                    </>
-                  ),
-                },
-                {
-                  key: 'links',
-                  label: t('pages.clients.tabLinks'),
-                  children: (
-                    <>
-                      <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-                        {t('pages.clients.linksHint')}
-                      </Typography.Paragraph>
-
-                      <Button
-                        type="primary"
-                        icon={<PlusOutlined aria-hidden />}
-                        onClick={() => addExternalLinkRow('link')}
-                      >
-                        {t('pages.clients.addExternalLink')}
-                      </Button>
-                      <div style={{ marginTop: 12, marginBottom: 24 }}>
-                        {linkRows.length === 0 ? (
-                          <Typography.Text type="secondary">
-                            {t('pages.clients.noExternalLinks')}
-                          </Typography.Text>
-                        ) : (
-                          linkRows.map(({ field, index }) => (
-                            <div key={field.id} className="external-link-card">
-                              <div className="external-link-row">
-                                <div className="external-link-enable">
-                                  <FormField
-                                    name={`externalLinks.${index}.enable`}
-                                    valueProp="checked"
-                                    noStyle
-                                  >
-                                    <Switch size="small" aria-label={t('enable')} />
-                                  </FormField>
-                                  <span>{t('enable')}</span>
-                                </div>
-                                <FormField name={`externalLinks.${index}.value`} noStyle>
-                                  <Input
-                                    aria-label="vless:// · vmess:// · trojan:// · ss:// · hysteria2:// · wireguard://"
-                                    placeholder="vless:// · vmess:// · trojan:// · ss:// · hysteria2:// · wireguard://"
-                                  />
-                                </FormField>
-                                <Tooltip title={t('delete')}>
-                                  <Button
-                                    aria-label={t('delete')}
-                                    danger
-                                    icon={<DeleteOutlined aria-hidden />}
-                                    onClick={() => removeExternalLink(index)}
-                                  />
-                                </Tooltip>
-                              </div>
-                              <div className="external-link-details two-cols">
-                                <FormField name={`externalLinks.${index}.remark`} noStyle>
-                                  <Input aria-label={t('remark')} placeholder={t('remark')} />
-                                </FormField>
-                                <Controller
-                                  control={methods.control}
-                                  name={`externalLinks.${index}.expiryTime`}
-                                  render={({ field: expiryField }) => {
-                                    const displayedExpiry = resolveExternalLinkExpiry(
-                                      expiryField.value,
-                                      expiryDate,
-                                    );
-                                    const hasSpecificExpiry = Number(expiryField.value) > 0;
-                                    return (
-                                      <DateTimePicker
-                                        aria-label={t('pages.clients.expiryTime')}
-                                        value={displayedExpiry > 0 ? dayjs(displayedExpiry) : null}
-                                        onChange={(v) => expiryField.onChange(v ? v.valueOf() : 0)}
-                                        placeholder={t('pages.inbounds.leaveBlankToNeverExpire')}
-                                        allowClear={hasSpecificExpiry}
-                                        maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
-                                      />
-                                    );
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      <Button
-                        type="primary"
-                        icon={<PlusOutlined aria-hidden />}
-                        onClick={() => addExternalLinkRow('subscription')}
-                      >
-                        {t('pages.clients.addExternalSubscription')}
-                      </Button>
-                      <div style={{ marginTop: 12 }}>
-                        {subscriptionRows.length === 0 ? (
-                          <Typography.Text type="secondary">
-                            {t('pages.clients.noExternalSubscriptions')}
-                          </Typography.Text>
-                        ) : (
-                          subscriptionRows.map(({ field, index }) => (
-                            <div key={field.id} className="external-link-card">
-                              <div className="external-link-row">
-                                <div className="external-link-enable">
-                                  <FormField
-                                    name={`externalLinks.${index}.enable`}
-                                    valueProp="checked"
-                                    noStyle
-                                  >
-                                    <Switch size="small" aria-label={t('enable')} />
-                                  </FormField>
-                                  <span>{t('enable')}</span>
-                                </div>
-                                <FormField name={`externalLinks.${index}.value`} noStyle>
-                                  <Input
-                                    aria-label="https://provider.example/sub/…"
-                                    placeholder="https://provider.example/sub/…"
-                                  />
-                                </FormField>
-                                <Tooltip title={t('delete')}>
-                                  <Button
-                                    aria-label={t('delete')}
-                                    danger
-                                    icon={<DeleteOutlined aria-hidden />}
-                                    onClick={() => removeExternalLink(index)}
-                                  />
-                                </Tooltip>
-                              </div>
-                              <div className="external-link-details three-cols">
-                                <FormField name={`externalLinks.${index}.remark`} noStyle>
-                                  <Input aria-label={t('remark')} placeholder={t('remark')} />
-                                </FormField>
-                                <FormField name={`externalLinks.${index}.namePrefix`} noStyle>
-                                  <Input
-                                    aria-label={t('pages.clients.namePrefix')}
-                                    placeholder={t('pages.clients.namePrefix')}
-                                  />
-                                </FormField>
-                                <Controller
-                                  control={methods.control}
-                                  name={`externalLinks.${index}.expiryTime`}
-                                  render={({ field: expiryField }) => {
-                                    const displayedExpiry = resolveExternalLinkExpiry(
-                                      expiryField.value,
-                                      expiryDate,
-                                    );
-                                    const hasSpecificExpiry = Number(expiryField.value) > 0;
-                                    return (
-                                      <DateTimePicker
-                                        aria-label={t('pages.clients.expiryTime')}
-                                        value={displayedExpiry > 0 ? dayjs(displayedExpiry) : null}
-                                        onChange={(v) => expiryField.onChange(v ? v.valueOf() : 0)}
-                                        placeholder={t('pages.inbounds.leaveBlankToNeverExpire')}
-                                        allowClear={hasSpecificExpiry}
-                                        maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
-                                      />
-                                    );
-                                  }}
-                                />
-                              </div>
-                              <Typography.Text
-                                type={field.lastFetchError ? 'danger' : 'secondary'}
-                                className="external-link-fetch-status"
+                            {showAmneziawg && (
+                              <FormField
+                                name="awgForwardedPorts"
+                                label={t('pages.clients.amneziaWgForwardedPorts')}
+                                extra={t('pages.clients.amneziaWgForwardedPortsHint')}
                               >
-                                {field.lastFetchError
-                                  ? `${t('pages.clients.lastFetchError')}: ${field.lastFetchError}`
-                                  : field.lastFetchAt > 0
-                                    ? `${t('pages.clients.lastFetchAt')}: ${dayjs(field.lastFetchAt).format('YYYY-MM-DD HH:mm:ss')}`
-                                    : t('pages.clients.neverFetched')}
-                              </Typography.Text>
-                            </div>
-                          ))
+                                <Input placeholder="80, 443, 8000-8100" />
+                              </FormField>
+                            )}
+                          </>
                         )}
-                      </div>
-                    </>
-                  ),
-                },
-              ]}
-            />
+                        {showMtproto && (
+                          <>
+                            <Form.Item
+                              htmlFor={`${uid}-mtproto-secret`}
+                              label={t('pages.clients.mtprotoSecret')}
+                              extra={t('pages.clients.mtprotoSecretHint')}
+                            >
+                              <Space.Compact style={{ display: 'flex' }}>
+                                <Input
+                                  id={`${uid}-mtproto-secret`}
+                                  value={secret}
+                                  style={{ flex: 1 }}
+                                  onChange={(e) => methods.setValue('secret', e.target.value)}
+                                />
+                                <Button
+                                  aria-label={t('regenerate')}
+                                  icon={<ReloadOutlined aria-hidden />}
+                                  onClick={regenerateMtprotoSecret}
+                                />
+                              </Space.Compact>
+                            </Form.Item>
+                            <FormField
+                              name="adTag"
+                              label={t('pages.clients.mtprotoAdTag')}
+                              extra={t('pages.clients.mtprotoAdTagHint')}
+                            >
+                              <Input allowClear placeholder="0123456789abcdef0123456789abcdef" />
+                            </FormField>
+                          </>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'links',
+                    label: t('pages.clients.tabLinks'),
+                    children: (
+                      <>
+                        <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
+                          {t('pages.clients.linksHint')}
+                        </Typography.Paragraph>
+
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined aria-hidden />}
+                          onClick={() => addExternalLinkRow('link')}
+                        >
+                          {t('pages.clients.addExternalLink')}
+                        </Button>
+                        <div style={{ marginTop: 12, marginBottom: 24 }}>
+                          {linkRows.length === 0 ? (
+                            <Typography.Text type="secondary">
+                              {t('pages.clients.noExternalLinks')}
+                            </Typography.Text>
+                          ) : (
+                            linkRows.map(({ field, index }) => (
+                              <div key={field.id} className="external-link-card">
+                                <div className="external-link-row">
+                                  <div className="external-link-enable">
+                                    <FormField
+                                      name={`externalLinks.${index}.enable`}
+                                      valueProp="checked"
+                                      noStyle
+                                    >
+                                      <Switch size="small" aria-label={t('enable')} />
+                                    </FormField>
+                                    <span>{t('enable')}</span>
+                                  </div>
+                                  <FormField name={`externalLinks.${index}.value`} noStyle>
+                                    <Input
+                                      aria-label="vless:// · vmess:// · trojan:// · ss:// · hysteria2:// · wireguard://"
+                                      placeholder="vless:// · vmess:// · trojan:// · ss:// · hysteria2:// · wireguard://"
+                                    />
+                                  </FormField>
+                                  <Tooltip title={t('delete')}>
+                                    <Button
+                                      aria-label={t('delete')}
+                                      danger
+                                      icon={<DeleteOutlined aria-hidden />}
+                                      onClick={() => removeExternalLink(index)}
+                                    />
+                                  </Tooltip>
+                                </div>
+                                <div className="external-link-details two-cols">
+                                  <FormField name={`externalLinks.${index}.remark`} noStyle>
+                                    <Input aria-label={t('remark')} placeholder={t('remark')} />
+                                  </FormField>
+                                  <Controller
+                                    control={methods.control}
+                                    name={`externalLinks.${index}.expiryTime`}
+                                    render={({ field: expiryField }) => {
+                                      const displayedExpiry = resolveExternalLinkExpiry(
+                                        expiryField.value,
+                                        expiryDate,
+                                      );
+                                      const hasSpecificExpiry = Number(expiryField.value) > 0;
+                                      return (
+                                        <DateTimePicker
+                                          aria-label={t('pages.clients.expiryTime')}
+                                          value={
+                                            displayedExpiry > 0 ? dayjs(displayedExpiry) : null
+                                          }
+                                          onChange={(v) =>
+                                            expiryField.onChange(v ? v.valueOf() : 0)
+                                          }
+                                          placeholder={t('pages.inbounds.leaveBlankToNeverExpire')}
+                                          allowClear={hasSpecificExpiry}
+                                          maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
+                                        />
+                                      );
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined aria-hidden />}
+                          onClick={() => addExternalLinkRow('subscription')}
+                        >
+                          {t('pages.clients.addExternalSubscription')}
+                        </Button>
+                        <div style={{ marginTop: 12 }}>
+                          {subscriptionRows.length === 0 ? (
+                            <Typography.Text type="secondary">
+                              {t('pages.clients.noExternalSubscriptions')}
+                            </Typography.Text>
+                          ) : (
+                            subscriptionRows.map(({ field, index }) => (
+                              <div key={field.id} className="external-link-card">
+                                <div className="external-link-row">
+                                  <div className="external-link-enable">
+                                    <FormField
+                                      name={`externalLinks.${index}.enable`}
+                                      valueProp="checked"
+                                      noStyle
+                                    >
+                                      <Switch size="small" aria-label={t('enable')} />
+                                    </FormField>
+                                    <span>{t('enable')}</span>
+                                  </div>
+                                  <FormField name={`externalLinks.${index}.value`} noStyle>
+                                    <Input
+                                      aria-label="https://provider.example/sub/…"
+                                      placeholder="https://provider.example/sub/…"
+                                    />
+                                  </FormField>
+                                  <Tooltip title={t('delete')}>
+                                    <Button
+                                      aria-label={t('delete')}
+                                      danger
+                                      icon={<DeleteOutlined aria-hidden />}
+                                      onClick={() => removeExternalLink(index)}
+                                    />
+                                  </Tooltip>
+                                </div>
+                                <div className="external-link-details three-cols">
+                                  <FormField name={`externalLinks.${index}.remark`} noStyle>
+                                    <Input aria-label={t('remark')} placeholder={t('remark')} />
+                                  </FormField>
+                                  <FormField name={`externalLinks.${index}.namePrefix`} noStyle>
+                                    <Input
+                                      aria-label={t('pages.clients.namePrefix')}
+                                      placeholder={t('pages.clients.namePrefix')}
+                                    />
+                                  </FormField>
+                                  <Controller
+                                    control={methods.control}
+                                    name={`externalLinks.${index}.expiryTime`}
+                                    render={({ field: expiryField }) => {
+                                      const displayedExpiry = resolveExternalLinkExpiry(
+                                        expiryField.value,
+                                        expiryDate,
+                                      );
+                                      const hasSpecificExpiry = Number(expiryField.value) > 0;
+                                      return (
+                                        <DateTimePicker
+                                          aria-label={t('pages.clients.expiryTime')}
+                                          value={
+                                            displayedExpiry > 0 ? dayjs(displayedExpiry) : null
+                                          }
+                                          onChange={(v) =>
+                                            expiryField.onChange(v ? v.valueOf() : 0)
+                                          }
+                                          placeholder={t('pages.inbounds.leaveBlankToNeverExpire')}
+                                          allowClear={hasSpecificExpiry}
+                                          maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
+                                        />
+                                      );
+                                    }}
+                                  />
+                                </div>
+                                <Typography.Text
+                                  type={field.lastFetchError ? 'danger' : 'secondary'}
+                                  className="external-link-fetch-status"
+                                >
+                                  {field.lastFetchError
+                                    ? `${t('pages.clients.lastFetchError')}: ${field.lastFetchError}`
+                                    : field.lastFetchAt > 0
+                                      ? `${t('pages.clients.lastFetchAt')}: ${dayjs(field.lastFetchAt).format('YYYY-MM-DD HH:mm:ss')}`
+                                      : t('pages.clients.neverFetched')}
+                                </Typography.Text>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            )}
           </Form>
         </FormProvider>
       </Modal>

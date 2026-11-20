@@ -5,6 +5,7 @@ import { HttpUtil } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { NodeListSchema } from '@/schemas/node';
 import type { NodeRecord } from '@/schemas/node';
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { keys } from '@/api/queryKeys';
 
 export type { NodeRecord };
@@ -21,6 +22,7 @@ export interface NodeTotals {
 }
 
 async function fetchNodes(): Promise<NodeRecord[]> {
+  if (isDelegatedPanel) return [];
   const msg = await HttpUtil.get('/panel/api/nodes/list', undefined, { silent: true });
   if (!msg?.success) throw new Error(msg?.msg || 'Failed to fetch nodes');
   const validated = parseMsg(msg, NodeListSchema, 'nodes/list');

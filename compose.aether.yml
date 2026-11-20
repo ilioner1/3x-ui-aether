@@ -1,0 +1,14 @@
+services:
+  panel:
+    build: .
+    ports:
+      - "127.0.0.1:2053:2053"
+    environment:
+      XUI_INIT_WEB_BASE_PATH: /
+      XUI_PORT: "2053"
+      XUI_ENABLE_FAIL2BAN: "false"
+    volumes:
+      - panel-data:/etc/x-ui
+    restart: unless-stopped
+volumes:
+  panel-data:

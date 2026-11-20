@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -32,6 +33,7 @@ export function useAllSettings() {
   const query = useQuery({
     queryKey: keys.settings.all(),
     queryFn: fetchAllSetting,
+    enabled: !isDelegatedPanel,
     staleTime: Infinity,
   });
 

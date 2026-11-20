@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AetherOutboundSettingsSchema } from '@/schemas/protocols/outbound/aether';
 
 import { PortSchema, SniffingSchema, type Sniffing } from '@/schemas/primitives';
 import { SSMethodSchema } from '@/schemas/protocols/shared/shadowsocks';
@@ -198,6 +199,7 @@ export type LoopbackOutboundFormSettings = z.infer<typeof LoopbackOutboundFormSe
 // Discriminated union on `protocol`. Same tagged-wrapper pattern as the
 // inbound side: each branch is { protocol: literal, settings: <flat> }.
 export const OutboundFormSettingsSchema = z.discriminatedUnion('protocol', [
+  z.object({ protocol: z.literal('aether'), settings: AetherOutboundSettingsSchema }),
   z.object({ protocol: z.literal('vmess'), settings: VmessOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('vless'), settings: VlessOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('trojan'), settings: TrojanOutboundFormSettingsSchema }),

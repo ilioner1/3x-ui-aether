@@ -1,4 +1,5 @@
 import { Base64 } from '@/utils';
+import { parseAetherLink } from './aether-link';
 
 import { normalizeUdpHop, upgradeLegacyUdpHop } from './udphop-mask';
 import { upgradeLegacyXdnsMasks } from './xdns-mask';
@@ -860,6 +861,7 @@ export function parseOutboundLink(link: string): Raw | null {
   const trimmed = link.trim();
   if (!trimmed) return null;
   const outbound =
+    parseAetherLink(trimmed) ??
     parseVmessLink(trimmed) ??
     parseVlessLink(trimmed) ??
     parseTrojanLink(trimmed) ??

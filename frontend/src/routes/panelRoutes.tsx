@@ -1,3 +1,4 @@
+import { isDelegatedPanel } from '@/lib/panel-access';
 import { lazy } from 'react';
 import type { ComponentType } from 'react';
 import {
@@ -9,6 +10,8 @@ import {
   GlobalOutlined,
   ImportOutlined,
   SettingOutlined,
+  SafetyOutlined,
+  BarChartOutlined,
   SwapOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -18,6 +21,7 @@ import {
 const IndexPage = lazy(() => import('@/pages/index/IndexPage'));
 const InboundsPage = lazy(() => import('@/pages/inbounds/InboundsPage'));
 const ClientsPage = lazy(() => import('@/pages/clients/ClientsPage'));
+const AdminsPage = lazy(() => import('@/pages/admins/AdminsPage'));
 const GroupsPage = lazy(() => import('@/pages/groups/GroupsPage'));
 const NodesPage = lazy(() => import('@/pages/nodes/NodesPage'));
 const HostsPage = lazy(() => import('@/pages/hosts/HostsPage'));
@@ -35,10 +39,23 @@ export interface PanelRoute {
 
 // The router, the sidebar, the page titles and the command palette all read this list, so a
 // page cannot go missing from one of them.
-export const PANEL_ROUTES: PanelRoute[] = [
+const ALL_PANEL_ROUTES: PanelRoute[] = [
   { path: '/', titleKey: 'menu.dashboard', icon: DashboardOutlined, component: IndexPage },
   { path: '/inbounds', titleKey: 'menu.inbounds', icon: ImportOutlined, component: InboundsPage },
   { path: '/clients', titleKey: 'menu.clients', icon: TeamOutlined, component: ClientsPage },
+  { path: '/admins', titleKey: 'menu.admins', icon: SafetyOutlined, component: AdminsPage },
+  {
+    path: '/admins-clients',
+    titleKey: 'menu.adminsClients',
+    icon: TeamOutlined,
+    component: ClientsPage,
+  },
+  {
+    path: '/admins-reports',
+    titleKey: 'menu.adminReports',
+    icon: BarChartOutlined,
+    component: AdminsPage,
+  },
   { path: '/groups', titleKey: 'menu.groups', icon: TagsOutlined, component: GroupsPage },
   { path: '/nodes', titleKey: 'menu.nodes', icon: ClusterOutlined, component: NodesPage },
   { path: '/hosts', titleKey: 'menu.hosts', icon: GlobalOutlined, component: HostsPage },
@@ -49,6 +66,12 @@ export const PANEL_ROUTES: PanelRoute[] = [
   { path: '/api-docs', titleKey: 'menu.apiDocs', icon: ApiOutlined, component: ApiDocsPage },
   { path: '/sponsors', titleKey: 'menu.sponsors', icon: CrownOutlined, component: SponsorsPage },
 ];
+
+export const PANEL_ROUTES = isDelegatedPanel
+  ? ALL_PANEL_ROUTES.filter(
+      ({ path }) => path === '/' || path === '/inbounds' || path === '/clients',
+    )
+  : ALL_PANEL_ROUTES;
 
 export const PANEL_ROUTE_PATHS = PANEL_ROUTES.map((route) => route.path);
 

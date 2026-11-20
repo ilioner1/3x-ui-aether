@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/aether"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
@@ -204,6 +205,10 @@ func (x *XrayAPI) DelInbound(tag string) error {
 // startup — notably v26.7.11's refusal of unencrypted vless/trojan outbounds
 // whose server address is a public IP or domain.
 func ValidateOutboundConfig(outbound []byte) (err error) {
+	if aether.IsOutbound(outbound) {
+		_, _, err := aether.ParseOutbound(outbound)
+		return err
+	}
 	ensureXrayAssetLocation()
 	// The loader panics on some third-party values (a short vless encryption, a bad spiderX).
 	defer func() {

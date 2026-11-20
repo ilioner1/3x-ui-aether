@@ -66,7 +66,7 @@ func TestSubClash_InfoNode_Active(t *testing.T) {
 	if !strings.Contains(out, "type: socks5") || !strings.Contains(out, "server: 127.0.0.1") {
 		t.Fatalf("expected socks5 dummy node in clash YAML, got:\n%s", out)
 	}
-	if !strings.Contains(out, "user1@test.com|📊8.00GB") {
+	if !strings.Contains(out, "📊8.00GB|user1@test.com") {
 		t.Fatalf("expected expanded remark on dummy proxy, got:\n%s", out)
 	}
 }

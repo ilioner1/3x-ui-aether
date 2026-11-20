@@ -633,6 +633,9 @@ export function rawOutboundToFormValues(raw: RawOutboundRow): OutboundFormValues
     case 'wireguard':
       typed = { protocol: 'wireguard', settings: wireguardFromWire(settings) };
       break;
+    case 'aether':
+      typed = { protocol: 'aether', settings: { uri: asString(settings.uri) } };
+      break;
     case 'amneziawg':
       typed = { protocol: 'amneziawg', settings: amneziawgFromWire(settings) };
       break;
@@ -970,6 +973,9 @@ export function formValuesToWirePayload(values: OutboundFormValues): WireOutboun
     case 'wireguard':
       settings = wireguardToWire(values.settings);
       break;
+    case 'aether':
+      settings = { uri: values.settings.uri };
+      break;
     case 'amneziawg':
       settings = amneziawgToWire(values.settings);
       break;
@@ -998,6 +1004,7 @@ export function formValuesToWirePayload(values: OutboundFormValues): WireOutboun
     settings,
   };
   if (values.tag) result.tag = values.tag;
+  if (values.protocol === 'aether') return result;
   if (values.targetStrategy && values.protocol !== 'freedom') {
     result.targetStrategy = values.targetStrategy;
   }
