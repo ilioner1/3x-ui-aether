@@ -267,7 +267,7 @@ export function useClients(options: UseClientsOptions = {}) {
 
   const inbounds = inboundOptionsQuery.data ?? [];
   const onlines =
-    (isDelegatedPanel ? listQuery.data?.summary.online : onlinesQuery.data) ?? EMPTY_ONLINES;
+    (isDelegatedPanel ? listQuery.data?.summary?.online : onlinesQuery.data) ?? EMPTY_ONLINES;
 
   const defaults = defaultsQuery.data ?? {};
   const subSettings: SubSettings = useMemo(
