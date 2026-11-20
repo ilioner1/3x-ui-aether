@@ -1037,10 +1037,6 @@ def get_main_keyboard(is_admin_user: bool = False, user_id: int = None) -> Inlin
     if row2:
         buttons.append(row2)
 
-    b = btn("invite_friends")
-    if b:
-        buttons.append([b])
-
     if is_admin_user:
         buttons.append([InlineKeyboardButton(text="👑 پنل ادمین", callback_data="admin_panel")])
 
@@ -4823,20 +4819,22 @@ async def recover_panel_orders():
         await asyncio.sleep(45)
 
 
-@dp.callback_query(F.data == "buy_service")
+@dp.callback_query((F.data == "buy_service") | F.data.startswith("rsstore:"))
 async def sell_reseller_panel(callback: CallbackQuery):
     uid = callback.from_user.id
     if uid in BLACKLIST or not SETTINGS.get("shop_open", True):
         return await safe_answer(callback, "فروشگاه در دسترس نیست.", show_alert=True)
-    if await force_join_gate(callback, "buy_service"):
+    if await force_join_gate(callback, callback.data):
         return
+    offset = max(0, parse_int(callback.data.split(":", 1)[-1]) or 0)
     try:
         catalog = await SalesAPI.from_env().catalog()
     except SalesError:
         return await safe_answer(callback, "فهرست فروش در دسترس نیست.", show_alert=True)
     rows = []
     quotes = {}
-    for plan in catalog["plans"][:90]:
+    available = [p for p in catalog["plans"] if reseller_prices().get(str(p["id"]), 0) > 0]
+    for plan in available[offset:offset + 15]:
         price = reseller_prices().get(str(plan["id"]), 0)
         if price > 0 and catalog["groupId"] > 0:
             ref = uuid.uuid4().hex
@@ -4846,6 +4844,10 @@ async def sell_reseller_panel(callback: CallbackQuery):
                 text=f"📦 {plan['name'][:42]} | {plan['quotaGiB']:,} گیگ | {price:,} تومان",
                 callback_data=f"rsquote:{ref}",
             )])
+    if offset:
+        rows.append([InlineKeyboardButton(text="قبلی", callback_data=f"rsstore:{max(0, offset - 15)}")])
+    if offset + 15 < len(available):
+        rows.append([InlineKeyboardButton(text="بعدی", callback_data=f"rsstore:{offset + 15}")])
     sale_quotes[uid] = quotes
     await safe_edit(callback, "📦 <b>خرید پنل نمایندگی</b>\n"
                     + ("پلن موردنظر را انتخاب کنید." if rows else "فعلاً پلن فعالی برای فروش وجود ندارد."),
