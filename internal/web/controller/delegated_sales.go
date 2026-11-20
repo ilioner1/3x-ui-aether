@@ -46,6 +46,7 @@ func (a *delegatedController) registerSalesAPI(g *gin.RouterGroup) {
 	})
 	api.GET("/catalog", a.salesCatalog)
 	api.PUT("/settings", middleware.MaxBodyBytes(4096), a.saveSalesSettings)
+	api.POST("/plans", middleware.MaxBodyBytes(4096), a.saveSalesPlan)
 	api.POST("/orders", middleware.MaxBodyBytes(4096), a.createSalesOrder)
 	api.GET("/accounts", a.salesAccounts)
 	api.PUT("/accounts/:id/quota", middleware.MaxBodyBytes(4096), a.setSalesQuota)
@@ -94,10 +95,12 @@ func (a *delegatedController) saveSalesPlan(c *gin.Context) {
 	db := database.GetDB()
 	enabled := c.PostForm("enabled") == "1"
 	if id == 0 {
-		if err := db.Create(&model.DelegatedSalesPlan{Name: name, QuotaGiB: quota, Enabled: enabled}).Error; err != nil {
+		plan := model.DelegatedSalesPlan{Name: name, QuotaGiB: quota, Enabled: enabled}
+		if err := db.Create(&plan).Error; err != nil {
 			pureJsonMsg(c, http.StatusInternalServerError, false, "Could not create the sales plan.")
 			return
 		}
+		id = plan.ID
 	} else {
 		result := db.Model(&model.DelegatedSalesPlan{}).Where("id = ?", id).
 			Updates(map[string]any{"name": name, "quota_gib": quota, "enabled": enabled})
@@ -110,7 +113,7 @@ func (a *delegatedController) saveSalesPlan(c *gin.Context) {
 			return
 		}
 	}
-	jsonObj(c, nil, nil)
+	jsonObj(c, gin.H{"id": id}, nil)
 }
 
 func (a *delegatedController) saveSalesSettings(c *gin.Context) {
@@ -139,13 +142,16 @@ func (a *delegatedController) saveSalesSettings(c *gin.Context) {
 	jsonObj(c, nil, nil)
 }
 
-var errSalesOrderConflict = errors.New("order reference already used")
-var errSalesPlanUnavailable = errors.New("sales plan or group unavailable")
+var (
+	errSalesOrderConflict = errors.New("order reference already used")
+	errSalesPlanUnavailable = errors.New("sales plan or group unavailable")
+)
 
 type salesOrderRequest struct {
 	Reference string `json:"reference"`
 	PlanID    int64  `json:"planId"`
 	QuotaGiB  int64  `json:"quotaGiB"`
+	GroupID   int64  `json:"groupId"`
 	Password  string `json:"password"`
 }
 
@@ -171,6 +177,9 @@ func provisionSalesAccount(db *gorm.DB, request salesOrderRequest) (model.Delega
 			if err := tx.First(&admin, order.AdminID).Error; err != nil {
 				return err
 			}
+			if request.GroupID != 0 && admin.GroupID != request.GroupID {
+				return errSalesOrderConflict
+			}
 			if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(request.Password)) != nil {
 				return errSalesOrderConflict
 			}
@@ -190,6 +199,9 @@ func provisionSalesAccount(db *gorm.DB, request salesOrderRequest) (model.Delega
 				return errSalesPlanUnavailable
 			}
 			return err
+		}
+		if request.GroupID != 0 && request.GroupID != config.GroupID {
+			return errSalesPlanUnavailable
 		}
 		var available int64
 		if err := allowedDelegatedInbounds(tx, config.GroupID).Count(&available).Error; err != nil {
@@ -217,7 +229,7 @@ func provisionSalesAccount(db *gorm.DB, request salesOrderRequest) (model.Delega
 func (a *delegatedController) createSalesOrder(c *gin.Context) {
 	var request salesOrderRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.PlanID <= 0 ||
-		request.QuotaGiB < 100 || request.QuotaGiB > 1_000_000 ||
+		request.QuotaGiB < 100 || request.QuotaGiB > 1_000_000 || request.GroupID < 0 ||
 		!salesOrderReference.MatchString(request.Reference) ||
 		len(request.Password) < 16 || len(request.Password) > 72 {
 		pureJsonMsg(c, http.StatusBadRequest, false, "Invalid order reference, plan, quota or password.")

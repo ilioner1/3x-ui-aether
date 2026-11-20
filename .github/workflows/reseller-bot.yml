@@ -1,0 +1,39 @@
+name: Reseller bot CI
+on:
+  pull_request:
+    paths:
+      - 'reseller-bot/**'
+      - 'internal/web/controller/delegated*.go'
+      - '.github/workflows/reseller-bot.yml'
+  push:
+    branches: [reseller-bot]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reseller-bot
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m py_compile bot.py reseller_sales.py
+      - run: python -m unittest -v
+      - run: python -c 'import bot'
+        env:
+          BOT_TOKEN: '123456789:ci-test-value-only'
+          SUPER_ADMIN_ID: '1'
+  panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: mkdir -p internal/web/dist && touch internal/web/dist/.gitkeep
+      - run: go test ./internal/web/controller -run '^TestDelegated' -count=1 -v

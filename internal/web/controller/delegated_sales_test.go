@@ -60,6 +60,21 @@ func TestDelegatedSalesProvisioningAndScope(t *testing.T) {
 	if res := call(http.MethodPut, "/delegate-sales/v1/settings", secret, fmt.Sprintf(`{"groupId":%d}`, group.ID)); res.Code != http.StatusOK {
 		t.Fatalf("could not select a sales group: %s", res.Body.String())
 	}
+	if res := call(http.MethodPost, "/delegate-sales/v1/plans", "", ""); res.Code != http.StatusUnauthorized {
+		t.Fatalf("plan creation accepted a missing token: %d", res.Code)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/delegate-sales/v1/plans", strings.NewReader("name=200+GiB&quotaGiB=200&enabled=1"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+secret)
+	planResponse := httptest.NewRecorder()
+	router.ServeHTTP(planResponse, req)
+	if planResponse.Code != http.StatusOK || !strings.Contains(planResponse.Body.String(), `"id":`) {
+		t.Fatalf("the sales token could not create a plan: %d %s", planResponse.Code, planResponse.Body.String())
+	}
+	wrongGroup := fmt.Sprintf(`{"reference":"changed-group","planId":%d,"groupId":%d,"quotaGiB":150,"password":"test-password-56d6c"}`, plan.ID, group.ID+1)
+	if res := call(http.MethodPost, "/delegate-sales/v1/orders", secret, wrongGroup); res.Code != http.StatusConflict {
+		t.Fatalf("a changed group should require reviewing the order: %d", res.Code)
+	}
 	wrongPlanQuota := fmt.Sprintf(`{"reference":"stale-invoice","planId":%d,"quotaGiB":100,"password":"test-password-56d6c"}`, plan.ID)
 	if res := call(http.MethodPost, "/delegate-sales/v1/orders", secret, wrongPlanQuota); res.Code != http.StatusConflict {
 		t.Fatalf("a changed plan quota should require reviewing the order: %d", res.Code)
