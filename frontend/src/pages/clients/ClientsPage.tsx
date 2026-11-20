@@ -319,6 +319,9 @@ function sortValueFor(column: string | null, order: 'ascend' | 'descend' | null)
 }
 
 export default function ClientsPage() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const adminClients = location.pathname === '/admins-clients';
   const { t } = useTranslation();
   const { isDark, isUltra, antdThemeConfig } = useTheme();
   const { datepicker } = useDatepicker();
@@ -373,7 +376,10 @@ export default function ClientsPage() {
     applyClientStatsEvent,
     refresh,
     hydrate,
-  } = useClients();
+  } = useClients({
+    ownerScope: isDelegatedPanel ? undefined : adminClients ? 'delegated' : 'master',
+    ownerAdminId: adminClients ? Number(searchParams.get('admin')) || undefined : undefined,
+  });
 
   useWebSocket({
     traffic: applyTrafficEvent,
@@ -431,8 +437,7 @@ export default function ClientsPage() {
   >(null);
 
   const initial = readFilterState();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
+
   const searchParam = searchParams.get('search');
   const [searchKey, setSearchKey] = useState(
     searchParam !== null ? searchParam : initial.searchKey,
@@ -1072,6 +1077,7 @@ export default function ClientsPage() {
 
   const columns = useMemo<ColumnsType<ClientRecord>>(
     () => [
+      ...(adminClients ? [{ title: 'Admin', dataIndex: 'ownerName', key: 'ownerName', width: 130 }] : []),
       {
         title: t('pages.clients.actions'),
         key: 'actions',
@@ -1244,6 +1250,7 @@ export default function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       t,
+      adminClients,
       togglingEmail,
       clientBucket,
       isOnline,
@@ -1411,7 +1418,7 @@ export default function ClientsPage() {
                       hoverable
                       title={
                         <div className="card-toolbar">
-                          {selectedRowKeys.length === 0 ? (
+                          {adminClients && selectedRowKeys.length === 0 ? null : selectedRowKeys.length === 0 ? (
                             <Button
                               type="primary"
                               icon={<PlusOutlined aria-hidden />}
@@ -1531,7 +1538,11 @@ export default function ClientsPage() {
                                           danger: true,
                                           onClick: onDeleteOrphans,
                                         },
-                                      ],
+                                      ].filter((item) => {
+                                        if (!item.key) return false;
+                                        if (['export', 'resetAll', 'delDepleted', 'delOrphans'].includes(item.key)) return false;
+                                        return !adminClients || !['bulk', 'import'].includes(item.key);
+                                      }),
                               }}
                             >
                               <Button icon={<MoreOutlined aria-hidden />} aria-label={t('more')}>
@@ -1804,6 +1815,7 @@ export default function ClientsPage() {
                                       <Badge status={bucketBadgeStatus(bucket)} />
                                     )}
                                     <span className="tag-name">{row.email}</span>
+                                    {adminClients && row.ownerName && <Tag>{row.ownerName}</Tag>}
                                     {bucket === 'depleted' && (
                                       <Tag color="red" className="status-tag">
                                         {t('depleted')}

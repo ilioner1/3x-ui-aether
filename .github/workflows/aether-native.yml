@@ -20,7 +20,7 @@ concurrency:
   group: aether-native-release
   cancel-in-progress: true
 env:
-  RELEASE_TAG: v3.11.0-aether.11
+  RELEASE_TAG: v3.11.0-aether.12
 jobs:
   package:
     if: github.repository == 'ilioner1/3x-ui-aether'
@@ -81,7 +81,7 @@ jobs:
           package_dir="$PWD/packages"
           if [[ "${{ matrix.arch }}" == amd64 ]]; then
             installer="$RUNNER_TEMP/install-aether-previous.sh"
-            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.10/install.sh -o "$installer"
+            curl -fsSL --retry 3 https://raw.githubusercontent.com/ilioner1/3x-ui-aether/v3.11.0-aether.11/install.sh -o "$installer"
             package_dir=""
           fi
           if ! sudo env XUI_AETHER_PACKAGE_DIR="$package_dir" XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=20953 XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false bash "$installer" >"$RUNNER_TEMP/aether-install.log" 2>&1; then

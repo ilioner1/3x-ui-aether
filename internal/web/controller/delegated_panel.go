@@ -122,6 +122,8 @@ func (a *delegatedController) panelClients(c *gin.Context) {
 	}
 	admin := panelDelegate(c)
 	params.DelegatedAdminID = admin.ID
+	params.OwnerScope = ""
+	params.OwnerAdminID = 0
 	resp, err := a.clients.ListPaged(&a.inbounds, nil, params)
 	if err != nil {
 		jsonObj(c, nil, err)

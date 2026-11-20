@@ -140,8 +140,14 @@ function buildQS(p: ClientQueryParams): string {
   return sp.toString();
 }
 
-async function fetchClientPage(params: ClientQueryParams): Promise<ClientPageResponse> {
-  const qs = buildQS(params);
+async function fetchClientPage(
+  params: ClientQueryParams,
+  ownerScope?: UseClientsOptions['ownerScope'],
+  ownerAdminId?: number,
+): Promise<ClientPageResponse> {
+  const qs = new URLSearchParams(buildQS(params));
+  if (ownerScope) qs.set('scope', ownerScope);
+  if (ownerAdminId) qs.set('ownerAdminId', String(ownerAdminId));
   const msg = await HttpUtil.get(`/panel/api/clients/list/paged?${qs}`, undefined, {
     silent: true,
   });
@@ -173,6 +179,8 @@ export interface UseClientsOptions {
   // list whose result they never read, which on a large panel means a full
   // summary aggregate every 5 seconds for nothing.
   list?: boolean;
+  ownerScope?: 'master' | 'delegated';
+  ownerAdminId?: number;
 }
 
 export function useClients(options: UseClientsOptions = {}) {
@@ -214,8 +222,8 @@ export function useClients(options: UseClientsOptions = {}) {
   }, []);
 
   const listQuery = useQuery({
-    queryKey: keys.clients.list(query ?? DEFAULT_QUERY),
-    queryFn: () => fetchClientPage(query ?? DEFAULT_QUERY),
+    queryKey: [...keys.clients.list(query ?? DEFAULT_QUERY), options.ownerScope, options.ownerAdminId],
+    queryFn: () => fetchClientPage(query ?? DEFAULT_QUERY, options.ownerScope, options.ownerAdminId),
     enabled: withList && query !== null,
     staleTime: Infinity,
     // List is sorted/paged server-side, so the WS patch can't add new or
@@ -267,7 +275,8 @@ export function useClients(options: UseClientsOptions = {}) {
 
   const inbounds = inboundOptionsQuery.data ?? [];
   const onlines =
-    (isDelegatedPanel ? listQuery.data?.summary?.online : onlinesQuery.data) ?? EMPTY_ONLINES;
+    (isDelegatedPanel || options.ownerScope ? listQuery.data?.summary?.online : onlinesQuery.data) ??
+    EMPTY_ONLINES;
 
   const defaults = defaultsQuery.data ?? {};
   const subSettings: SubSettings = useMemo(

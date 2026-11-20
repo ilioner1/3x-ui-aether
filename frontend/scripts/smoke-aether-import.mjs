@@ -84,6 +84,36 @@ try {
     page.locator('button[type="submit"]').click(),
   ]);
 
+  await page.goto(`${base}/panel/admins`);
+  await page.getByRole('button', { name: 'Add admin' }).waitFor();
+  await page.getByRole('button', { name: 'Edit group' }).first().click();
+  const groupForm = page.getByRole('dialog', { name: 'Edit group' });
+  const groupSaved = page.waitForResponse((response) =>
+    response.url().endsWith('/panel/delegated-admins/group') && response.request().method() === 'POST',
+  );
+  await groupForm.getByRole('button', { name: 'Save', exact: true }).click();
+  if (!(await (await groupSaved).json()).success) throw new Error('Native admin group edit failed');
+
+  await page.goto(`${base}/panel/admins-reports`);
+  const adminRow = page.getByRole('row').filter({ hasText: 'smoke-delegate' });
+  await adminRow.getByRole('button', { name: 'Edit', exact: true }).click();
+  const adminForm = page.getByRole('dialog', { name: 'Edit admin' });
+  await adminForm.getByRole('spinbutton', { name: 'Quota (GiB)' }).fill('3');
+  const quotaSaved = page.waitForResponse((response) =>
+    response.url().endsWith('/panel/delegated-admins/account') && response.request().method() === 'POST',
+  );
+  await adminForm.getByRole('button', { name: 'Save', exact: true }).click();
+  if (!(await (await quotaSaved).json()).success) throw new Error('Native admin quota edit failed');
+  await adminForm.waitFor({ state: 'hidden' });
+  await adminRow.getByRole('link', { name: 'Clients', exact: true }).click();
+  await page.getByRole('row').filter({ hasText: 'delegated-live-client' }).waitFor();
+  await page.goto(`${base}/panel/clients`);
+  const masterList = await page.request.get(`${base}/panel/api/clients/list/paged?scope=master`);
+  if ((await masterList.json()).obj.items.some((item) => item.comment === 'delegated-live-client')) {
+    throw new Error('Master clients scope included a delegated client');
+  }
+  console.log('Browser verified native admin management, reports, quota edits and scoped clients');
+
   await page.goto(`${base}/panel/xray#outbound`);
   async function importLink(link, tag) {
     await page.getByRole('button', { name: 'more', exact: true }).first().click();

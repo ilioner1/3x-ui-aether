@@ -84,6 +84,8 @@ func (a *delegatedController) register(g *gin.RouterGroup) {
 	master := g.Group("/panel")
 	master.Use(a.checkLogin, csrf)
 	master.GET("/delegated-admins", a.admins)
+	master.GET("/delegated-admins/data", a.adminData)
+	master.POST("/delegated-admins/reset-traffic", middleware.MaxBodyBytes(4096), a.resetAdminTraffic)
 	master.POST("/delegated-admins/group", middleware.MaxBodyBytes(64<<10), a.saveGroup)
 	master.POST("/delegated-admins/account", middleware.MaxBodyBytes(16<<10), a.saveAdmin)
 	master.GET("/delegated-reports", a.reports)
@@ -329,7 +331,7 @@ func (a *delegatedController) adminsView(c *gin.Context, message string) {
 func (a *delegatedController) saveGroup(c *gin.Context) {
 	name := delegateName(c.PostForm("name"), 100)
 	if name == "" {
-		a.adminsView(c, "نام گروه رو وارد کن.")
+		a.finishAdminSave(c, "نام گروه رو وارد کن.")
 		return
 	}
 	ids := make(map[int]bool)
@@ -339,7 +341,7 @@ func (a *delegatedController) saveGroup(c *gin.Context) {
 		}
 	}
 	if len(ids) > maxDelegatedInbounds {
-		a.adminsView(c, "حداکثر ۵۰۰ اینباند در یک گروه.")
+		a.finishAdminSave(c, "حداکثر ۵۰۰ اینباند در یک گروه.")
 		return
 	}
 	id := delegateID(c.PostForm("id"))
@@ -383,13 +385,13 @@ func (a *delegatedController) saveGroup(c *gin.Context) {
 		return tx.CreateInBatches(&grants, 100).Error
 	})
 	if err != nil {
-		a.adminsView(c, "گروه ذخیره نشد. نام و اینباندها رو بررسی کن.")
+		a.finishAdminSave(c, "گروه ذخیره نشد. نام و اینباندها رو بررسی کن.")
 		return
 	}
 	if id != 0 {
 		a.xray.ScheduleDelegatedDisconnect()
 	}
-	c.Redirect(http.StatusSeeOther, c.GetString("base_path")+"panel/delegated-admins")
+	a.finishAdminSave(c, "")
 }
 
 func (a *delegatedController) saveAdmin(c *gin.Context) {
@@ -401,7 +403,7 @@ func (a *delegatedController) saveAdmin(c *gin.Context) {
 	enabled := c.PostForm("enable") == "1"
 	if username == "" || quota == 0 || quota > 1_000_000 || groupID == 0 ||
 		((id == 0 || password != "") && (len(password) < 8 || len(password) > 72)) {
-		a.adminsView(c, "نام کاربری، گروه، حجم مثبت و رمز ۸ تا ۷۲ بایتی وارد کن.")
+		a.finishAdminSave(c, "نام کاربری، گروه، حجم مثبت و رمز ۸ تا ۷۲ بایتی وارد کن.")
 		return
 	}
 	var hash []byte
@@ -443,13 +445,25 @@ func (a *delegatedController) saveAdmin(c *gin.Context) {
 		return tx.Model(&admin).Updates(fields).Error
 	})
 	if err != nil {
-		a.adminsView(c, "حساب ذخیره نشد. نام کاربری تکراری نباشه.")
+		a.finishAdminSave(c, "حساب ذخیره نشد. نام کاربری تکراری نباشه.")
 		return
 	}
 	if revoke {
 		a.xray.ScheduleDelegatedDisconnect()
 	} else {
 		a.xray.SetToNeedReconcile()
+	}
+	a.finishAdminSave(c, "")
+}
+
+func (a *delegatedController) finishAdminSave(c *gin.Context, message string) {
+	if isAjax(c) {
+		pureJsonMsg(c, http.StatusOK, message == "", message)
+		return
+	}
+	if message != "" {
+		a.adminsView(c, message)
+		return
 	}
 	c.Redirect(http.StatusSeeOther, c.GetString("base_path")+"panel/delegated-admins")
 }

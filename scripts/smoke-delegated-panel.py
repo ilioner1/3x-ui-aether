@@ -166,7 +166,7 @@ with tempfile.TemporaryDirectory() as temporary:
         print("Xray recorded live VLESS traffic in the account ledger", flush=True)
 
         with sqlite3.connect("/etc/x-ui/x-ui.db", timeout=10) as db:
-            db.execute("UPDATE delegated_admins SET quota_bytes = used_bytes + 1 WHERE id = ?", (owner,))
+            db.execute("UPDATE delegated_admins SET used_bytes = quota_bytes - 1 WHERE id = ?", (owner,))
 
         def exhausted():
             used, cap = ledger()
@@ -185,12 +185,12 @@ with tempfile.TemporaryDirectory() as temporary:
         if connected():
             raise RuntimeError("VLESS still worked with an exhausted delegated account")
         print("Live traffic exhausted the account cap and disconnected VLESS", flush=True)
-        admin_page = get(master, f"/panel/delegated-admins?admin={owner}")
-        post(master, "/panel/delegated-admins/account", admin_page, {
-            "id": owner, "username": "smoke-delegate", "group": group, "quota": 2, "enable": 1,
-        })
-        wait_for(connected, "VLESS did not recover after a master top-up", timeout=75)
-        print("Master top-up restored the existing VLESS client", flush=True)
+        _, cap = ledger()
+        reset = post(master, "/panel/delegated-admins/reset-traffic", get(master, "/panel/delegated-admins"), {"id": owner})
+        if not json.loads(reset)["success"] or ledger() != (0, cap):
+            raise RuntimeError("Admin traffic reset did not preserve the original quota")
+        wait_for(connected, "VLESS did not recover after the master reset usage", timeout=75)
+        print("Master reset usage and restored the existing client under the same quota", flush=True)
     finally:
         proc.terminate()
         proc.wait(timeout=10)
