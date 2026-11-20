@@ -35,6 +35,10 @@ func NewAPIController(g *gin.RouterGroup) *APIController {
 }
 
 func (a *APIController) checkAPIAuth(c *gin.Context) {
+	if isDelegatedSalesBearer(c.GetHeader("Authorization")) {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
 	setAuthenticated := func(scope string) {
 		if u, err := a.userService.GetFirstUser(); err == nil {
 			session.SetAPIAuthUser(c, u)

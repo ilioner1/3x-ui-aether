@@ -27,6 +27,7 @@ import { selectTagRender } from '@/components/form';
 import AppSidebar from '@/layouts/AppSidebar';
 import { useTheme } from '@/hooks/useTheme';
 import { HttpUtil, SizeFormatter } from '@/utils';
+import SalesPlans from './SalesPlans';
 
 const API = '/panel/delegated-admins';
 const GIB = 1024 ** 3;
@@ -313,6 +314,7 @@ export default function AdminsPage() {
                   />
                 </Card>
               )}
+              {!reports && <SalesPlans />}
             </Space>
           </Layout.Content>
         </Layout>
