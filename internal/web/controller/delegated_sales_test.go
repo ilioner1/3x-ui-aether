@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -104,5 +107,66 @@ func TestDelegatedSalesProvisioningAndScope(t *testing.T) {
 	res = call(http.MethodPut, path, secret, `{"expectedQuotaGiB":150,"quotaGiB":200}`)
 	if res.Code != http.StatusConflict {
 		t.Fatalf("a stale quota adjustment overwrote the current plan: %d", res.Code)
+	}
+}
+
+func TestDelegatedSalesTokenLifecycle(t *testing.T) {
+	const legacy = "test-only-sales-token-not-for-deployment"
+	t.Setenv(salesTokenEnv, legacy)
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
+	db := database.GetDB()
+	controller := &delegatedController{}
+	router := gin.New()
+	router.Use(sessions.Sessions("sales-test", cookie.NewStore([]byte("test-only-session-key-32-letters!"))))
+	controller.register(router.Group(""))
+	// Call the mutation handler with a fixture context only after testing the mounted auth guard.
+	req := httptest.NewRequest(http.MethodPost, "/panel/delegated-admins/sales/token", nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, req)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("token management accepted an unauthenticated request: %d", unauthorized.Code)
+	}
+	change := func(action string) string {
+		t.Helper()
+		res := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(res)
+		c.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader("action="+action))
+		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		controller.changeSalesToken(c)
+		var payload struct {
+			Obj struct {
+				Token string
+			}
+		}
+		if res.Code != http.StatusOK || res.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("token action %q failed: %d %s", action, res.Code, res.Body.String())
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Obj.Token
+	}
+	if !isDelegatedSalesBearer("Bearer " + legacy) {
+		t.Fatal("existing sales integration stopped before rotation")
+	}
+	first := change("generate")
+	if len(first) != 64 || !isDelegatedSalesBearer("Bearer "+first) || isDelegatedSalesBearer("Bearer "+legacy) {
+		t.Fatal("generated token did not replace the environment token")
+	}
+	var config model.DelegatedSalesConfig
+	if err := db.First(&config, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(config.TokenHash) != 64 || config.TokenHash == first {
+		t.Fatal("the token was stored without hashing")
+	}
+	second := change("generate")
+	if second == first || !isDelegatedSalesBearer("Bearer "+second) || isDelegatedSalesBearer("Bearer "+first) {
+		t.Fatal("rotation did not replace the old token")
+	}
+	change("revoke")
+	if isDelegatedSalesBearer("Bearer "+second) || isDelegatedSalesBearer("Bearer "+legacy) {
+		t.Fatal("revocation left a token active")
 	}
 }

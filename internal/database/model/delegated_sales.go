@@ -8,8 +8,10 @@ type DelegatedSalesPlan struct {
 }
 
 type DelegatedSalesConfig struct {
-	ID      int64 `gorm:"primaryKey;autoIncrement:false"`
-	GroupID int64 `gorm:"not null"`
+	ID           int64  `gorm:"primaryKey;autoIncrement:false"`
+	GroupID      int64  `gorm:"not null"`
+	TokenManaged bool   `gorm:"not null;default:false" json:"-"`
+	TokenHash    string `gorm:"size:64;not null;default:''" json:"-"`
 }
 
 type DelegatedSalesOrder struct {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -25,14 +26,69 @@ const salesTokenEnv = "XUI_DELEGATED_SALES_TOKEN"
 
 var salesOrderReference = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
+func salesTokenHash(db *gorm.DB) (string, error) {
+	var config model.DelegatedSalesConfig
+	err := db.Select("token_managed", "token_hash").First(&config, 1).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
+	if config.TokenManaged {
+		return config.TokenHash, nil
+	}
+	if token := os.Getenv(salesTokenEnv); len(token) >= 32 {
+		hash := sha256.Sum256([]byte(token))
+		return hex.EncodeToString(hash[:]), nil
+	}
+	return "", nil
+}
+
 func isDelegatedSalesBearer(header string) bool {
-	token := os.Getenv(salesTokenEnv)
 	candidate, ok := strings.CutPrefix(header, "Bearer ")
-	if len(token) < 32 || !ok {
+	if !ok || len(candidate) < 32 {
 		return false
 	}
-	want, got := sha256.Sum256([]byte(token)), sha256.Sum256([]byte(candidate))
-	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+	want, err := salesTokenHash(database.GetDB())
+	hash := sha256.Sum256([]byte(candidate))
+	return err == nil && subtle.ConstantTimeCompare([]byte(hex.EncodeToString(hash[:])), []byte(want)) == 1
+}
+
+func (a *delegatedController) salesTokenStatus(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	hash, err := salesTokenHash(database.GetDB())
+	if err != nil {
+		pureJsonMsg(c, http.StatusInternalServerError, false, "Could not read the sales token status.")
+		return
+	}
+	jsonObj(c, gin.H{"active": hash != ""}, nil)
+}
+
+func (a *delegatedController) changeSalesToken(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	var token, tokenHash string
+	switch c.PostForm("action") {
+	case "generate":
+		var random [32]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			pureJsonMsg(c, http.StatusInternalServerError, false, "Could not generate a sales token.")
+			return
+		}
+		token = hex.EncodeToString(random[:])
+		hash := sha256.Sum256([]byte(token))
+		tokenHash = hex.EncodeToString(hash[:])
+	case "revoke":
+	default:
+		pureJsonMsg(c, http.StatusBadRequest, false, "Invalid token action.")
+		return
+	}
+	config := model.DelegatedSalesConfig{ID: 1, TokenManaged: true, TokenHash: tokenHash}
+	if err := database.GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"token_managed", "token_hash"}),
+	}).Create(&config).Error; err != nil {
+		pureJsonMsg(c, http.StatusInternalServerError, false, "Could not save the sales token.")
+		return
+	}
+	jsonObj(c, gin.H{"active": token != "", "token": token}, nil)
 }
 
 func (a *delegatedController) registerSalesAPI(g *gin.RouterGroup) {
@@ -43,6 +99,7 @@ func (a *delegatedController) registerSalesAPI(g *gin.RouterGroup) {
 			return
 		}
 		c.Header("Cache-Control", "no-store")
+		c.Set("delegated_sales_api", true)
 	})
 	api.GET("/catalog", a.salesCatalog)
 	api.PUT("/settings", middleware.MaxBodyBytes(4096), a.saveSalesSettings)
@@ -74,7 +131,7 @@ func (a *delegatedController) salesCatalog(c *gin.Context) {
 		return
 	}
 	plans := db.Order("quota_gib, id")
-	if isDelegatedSalesBearer(c.GetHeader("Authorization")) {
+	if c.GetBool("delegated_sales_api") {
 		plans = plans.Where("enabled = ?", true)
 	}
 	if err := plans.Find(&view.Plans).Error; err != nil {
@@ -135,7 +192,10 @@ func (a *delegatedController) saveSalesSettings(c *gin.Context) {
 		return
 	}
 	config := model.DelegatedSalesConfig{ID: 1, GroupID: body.GroupID}
-	if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&config).Error; err != nil {
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"group_id"}),
+	}).Create(&config).Error; err != nil {
 		pureJsonMsg(c, http.StatusInternalServerError, false, "Could not save sales settings.")
 		return
 	}

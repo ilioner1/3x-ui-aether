@@ -87,6 +87,8 @@ func (a *delegatedController) register(g *gin.RouterGroup) {
 	master.GET("/delegated-admins/data", a.adminData)
 	master.GET("/delegated-admins/sales", a.salesCatalog)
 	master.POST("/delegated-admins/sales/plans", middleware.MaxBodyBytes(4096), a.saveSalesPlan)
+	master.GET("/delegated-admins/sales/token", a.salesTokenStatus)
+	master.POST("/delegated-admins/sales/token", middleware.MaxBodyBytes(4096), a.changeSalesToken)
 	a.registerSalesAPI(g)
 	master.POST("/delegated-admins/reset-traffic", middleware.MaxBodyBytes(4096), a.resetAdminTraffic)
 	master.POST("/delegated-admins/group", middleware.MaxBodyBytes(64<<10), a.saveGroup)
