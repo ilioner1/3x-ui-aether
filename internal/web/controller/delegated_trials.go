@@ -15,11 +15,15 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 )
 
-const trialAdminName = "reseller-bot-trials"
-const trialBudget = 100 * delegateGiB
+const (
+	trialAdminName = "reseller-bot-trials"
+	trialBudget    = 100 * delegateGiB
+)
 
-var errTrialUnavailable = errors.New("trial service unavailable")
-var errTrialAlreadyUsed = errors.New("monthly trial already used")
+var (
+	errTrialUnavailable = errors.New("trial service unavailable")
+	errTrialAlreadyUsed = errors.New("monthly trial already used")
+)
 
 func trialEmail(telegramID int64, now time.Time) string {
 	return fmt.Sprintf("rs-trial-%d-%s", telegramID, now.UTC().Format("200601"))
@@ -167,7 +171,7 @@ func (a *delegatedController) issueTrial(c *gin.Context) {
 	}
 	jsonObj(c, gin.H{
 		"subscriptionUrl": uri + subID,
-		"volumeMiB": owner.TrialQuotaBytes / (1 << 20),
+		"volumeMiB":       owner.TrialQuotaBytes / (1 << 20),
 	}, nil)
 }
 
