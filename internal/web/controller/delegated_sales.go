@@ -206,7 +206,7 @@ func (a *delegatedController) saveSalesSettings(c *gin.Context) {
 }
 
 var (
-	errSalesOrderConflict = errors.New("order reference already used")
+	errSalesOrderConflict   = errors.New("order reference already used")
 	errSalesPlanUnavailable = errors.New("sales plan or group unavailable")
 )
 
