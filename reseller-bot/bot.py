@@ -22,8 +22,9 @@ import re
 import zipfile
 import sqlite3
 import uuid
+from urllib.parse import urlsplit
 
-from reseller_sales import InsufficientFunds, PlanUnavailable, SalesAPI, SalesError, WalletSales
+from reseller_sales import InsufficientFunds, PlanUnavailable, SalesAPI, SalesError, TrialAlreadyUsed, WalletSales
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, List, Optional
@@ -1036,6 +1037,8 @@ def get_main_keyboard(is_admin_user: bool = False, user_id: int = None) -> Inlin
     row2 = [b for b in (btn("increase_balance"), btn("my_account")) if b]
     if row2:
         buttons.append(row2)
+
+    buttons.append([InlineKeyboardButton(text="🧪 دریافت تست", callback_data="reseller_trial")])
 
     if is_admin_user:
         buttons.append([InlineKeyboardButton(text="👑 پنل ادمین", callback_data="admin_panel")])
@@ -4949,6 +4952,7 @@ def admin_sales_launch():
     return [
         [InlineKeyboardButton(text="📦 پلن‌های نمایندگی", callback_data="rsadminplans"),
          InlineKeyboardButton(text="📊 گزارش نماینده‌ها", callback_data="rsreport:0")],
+        [InlineKeyboardButton(text="🧪 تنظیم حجم تست", callback_data="reseller_trial_settings")],
     ]
 
 
@@ -5074,6 +5078,83 @@ def set_reseller_price(plan, price):
     if not save_json(FILES["settings"], {**SETTINGS, "reseller_prices": updated}):
         raise SalesError("Could not persist the plan price.")
     SETTINGS["reseller_prices"] = updated
+
+
+
+@dp.callback_query(F.data == "reseller_trial")
+async def reseller_trial(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if uid in BLACKLIST:
+        return await safe_answer(callback, "دسترسی مسدود است.", show_alert=True)
+    if await force_join_gate(callback, callback.data):
+        return
+    await safe_answer(callback, "در حال گرفتن لینک تست…")
+    try:
+        result = await SalesAPI.from_env().request("POST", "/trials", json={"telegramId": uid})
+        uri = result["subscriptionUrl"]
+        parsed = urlsplit(uri)
+        if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password:
+            raise SalesError("Invalid subscription URL")
+        quota = int(result["volumeMiB"])
+    except TrialAlreadyUsed:
+        return await callback.message.answer("سهمیهٔ تست این ماه رو قبلاً گرفتی.")
+    except (SalesError, ValueError, TypeError, KeyError):
+        return await callback.message.answer("تست فعلاً در دسترس نیست. بعداً دوباره امتحان کن.")
+    await callback.message.answer(
+        f"🧪 تست ماهانهٔ {quota} مگابایتی\n"
+        "هر حساب تلگرام در هر ماه یک تست جدید می‌گیره.\n\n"
+        f"لینک ساب\n<code>{esc(uri)}</code>",
+        protect_content=True,
+    )
+
+
+@dp.callback_query(F.data == "reseller_trial_settings")
+async def reseller_trial_settings(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_admin(uid):
+        return await safe_answer(callback, "دسترسی ندارید.", show_alert=True)
+    user_states.pop(uid, None)
+    try:
+        result = await SalesAPI.from_env().request("GET", "/trial-settings")
+        name = esc(result["adminName"])
+        volume = int(result["volumeMiB"])
+        used = int(result["usedBytes"]) / 1024**3
+        limit = int(result["quotaBytes"]) / 1024**3
+    except (SalesError, KeyError, TypeError, ValueError):
+        return await safe_answer(callback, "تنظیمات تست در دسترس نیست.", show_alert=True)
+    user_states[uid] = {"reseller_trial_volume": True}
+    await safe_edit(
+        callback,
+        f"🧪 حجم تست جدید {volume} مگابایت\n"
+        f"حساب سنایی <code>{name}</code>\n"
+        f"مصرف {used:.2f} از {limit:g} گیگابایت\n\n"
+        "برای تغییر حجم تست‌های بعدی یک عدد از ۱ تا ۵۰۰ بفرست.",
+        reply_markup=get_back_only_keyboard("admin_panel"),
+    )
+    await safe_answer(callback)
+
+
+@dp.message(F.text, lambda m: m.from_user and user_states.get(m.from_user.id, {}).get("reseller_trial_volume"))
+async def save_reseller_trial_volume(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        user_states.pop(uid, None)
+        return
+    try:
+        volume = int(message.text.strip())
+        if not 1 <= volume <= 500:
+            raise ValueError
+    except ValueError:
+        return await message.answer("یک عدد صحیح از ۱ تا ۵۰۰ وارد کن.")
+    try:
+        await SalesAPI.from_env().request("PUT", "/trial-settings", json={"volumeMiB": volume})
+    except SalesError:
+        return await message.answer("حجم ذخیره نشد. کمی بعد دوباره امتحان کن.")
+    user_states.pop(uid, None)
+    await message.answer(
+        f"✅ حجم تست‌های جدید روی {volume} مگابایت تنظیم شد.",
+        reply_markup=get_back_only_keyboard("admin_panel"),
+    )
 
 
 async def private_sales_middleware(handler, event, data):

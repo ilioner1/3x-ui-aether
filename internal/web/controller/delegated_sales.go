@@ -102,6 +102,9 @@ func (a *delegatedController) registerSalesAPI(g *gin.RouterGroup) {
 		c.Set("delegated_sales_api", true)
 	})
 	api.GET("/catalog", a.salesCatalog)
+	api.GET("/trial-settings", a.trialSettings)
+	api.PUT("/trial-settings", middleware.MaxBodyBytes(4096), a.saveTrialSettings)
+	api.POST("/trials", middleware.MaxBodyBytes(4096), a.issueTrial)
 	api.PUT("/settings", middleware.MaxBodyBytes(4096), a.saveSalesSettings)
 	api.POST("/plans", middleware.MaxBodyBytes(4096), a.saveSalesPlan)
 	api.POST("/orders", middleware.MaxBodyBytes(4096), a.createSalesOrder)
@@ -203,7 +206,7 @@ func (a *delegatedController) saveSalesSettings(c *gin.Context) {
 }
 
 var (
-	errSalesOrderConflict = errors.New("order reference already used")
+	errSalesOrderConflict   = errors.New("order reference already used")
 	errSalesPlanUnavailable = errors.New("sales plan or group unavailable")
 )
 

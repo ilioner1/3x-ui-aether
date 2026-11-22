@@ -258,8 +258,13 @@ func (a *delegatedController) addOwnedClient(admin model.DelegatedAdmin, inbound
 	if err != nil {
 		return "", err
 	}
+	return a.provisionOwnedClient(owner, inboundIDs, quota, enable)
+}
+
+func (a *delegatedController) provisionOwnedClient(owner model.DelegatedClient, inboundIDs []int, quota int64, enable bool) (string, error) {
+	db := database.GetDB()
 	payload := service.ClientCreatePayload{
-		Client:     model.Client{Email: owner.InitialEmail, Enable: enable, Comment: label, TotalGB: quota},
+		Client:     model.Client{Email: owner.InitialEmail, Enable: enable, Comment: owner.Label, TotalGB: quota},
 		InboundIds: inboundIDs,
 	}
 	restart, createErr := a.clients.Create(&a.inbounds, &payload)

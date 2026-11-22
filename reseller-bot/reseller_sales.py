@@ -17,6 +17,10 @@ class PlanUnavailable(SalesError):
     pass
 
 
+class TrialAlreadyUsed(SalesError):
+    pass
+
+
 class InsufficientFunds(SalesError):
     pass
 
@@ -49,6 +53,8 @@ class SalesAPI:
                     if (path == "/orders" and response.status == 409
                             and data.get("msg") == "sales plan or group unavailable"):
                         raise PlanUnavailable("Sales plan or group unavailable.")
+                    if path == "/trials" and response.status == 409:
+                        raise TrialAlreadyUsed("Monthly trial already used.")
                     if response.status != 200 or data.get("success") is not True:
                         raise SalesError(f"Sanaei rejected the request ({response.status}).")
                     return data.get("obj")
