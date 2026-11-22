@@ -28,6 +28,7 @@ type DelegatedClient struct {
 	AdminID      int64  `gorm:"not null;index:idx_delegated_client_page,priority:1"`
 	ClientID     *int   `gorm:"uniqueIndex"`
 	InitialEmail string `gorm:"uniqueIndex;not null"`
+	TrialQuotaBytes int64 `gorm:"not null;default:0"`
 	Label        string `gorm:"size:100;not null"`
 	UsedBytes    int64  `gorm:"not null"`
 }
