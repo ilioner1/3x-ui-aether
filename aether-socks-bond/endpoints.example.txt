@@ -1,0 +1,2 @@
+# Optional. Enter only IP addresses that serve your own gateway hostname.
+# One IPv4 or IPv6 literal per line. An empty file uses DNS for the gateway.

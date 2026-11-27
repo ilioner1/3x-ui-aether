@@ -1,0 +1,40 @@
+name: Aether SOCKS Bond CI
+on:
+  pull_request:
+    paths:
+      - 'aether-socks-bond/**'
+      - 'downloads/aether-socks-bond.zip'
+      - '.github/workflows/aether-socks-bond.yml'
+permissions:
+  contents: read
+jobs:
+  socks-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r aether-socks-bond/requirements.txt 'cryptography>=44,<51'
+      - name: Verify downloadable ZIP matches the sources
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          with ZipFile("downloads/aether-socks-bond.zip") as archive:
+              assert archive.testzip() is None
+              names = {
+                  "aether-socks-bond/" + name
+                  for name in ("README.md", "bond.py", "endpoints.example.txt", "requirements.txt")
+              }
+              assert set(archive.namelist()) == names
+              for name in names:
+                  assert archive.read(name) == Path(name).read_bytes(), name
+          PY
+      - name: Verify ordered SOCKS5 traffic, two active paths and failover
+        run: python aether-socks-bond/test_bond_integration.py
