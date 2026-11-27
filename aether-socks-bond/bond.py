@@ -331,6 +331,8 @@ async def socks_reply(writer, code):
 
 def token():
     secret = os.environ.get("BOND_TOKEN", "")
+    if not secret and (directory := os.environ.get("CREDENTIALS_DIRECTORY")):
+        secret = (Path(directory) / "bond-token").read_text(encoding="ascii").strip()
     if len(secret) < 32 or not secret.isascii() or any(not c.isalnum() and c not in "-_" for c in secret):
         raise SystemExit("Set BOND_TOKEN to a random URL-safe token of at least 32 characters.")
     return secret

@@ -5,7 +5,48 @@ WebSocket connections. The gateway performs outbound TCP connections. Each
 logical stream has a sequence number space, a receive window, cumulative
 acknowledgements and retransmission if a path drops.
 
-## Install
+## Install as systemd services
+
+The installer is for Linux hosts running systemd 247+ with Python 3.11+,
+venv, OpenSSL and iproute2 installed. It installs each role under
+`/opt/aether-bond`, starts it immediately and enables it at boot.
+The services continue running after SSH disconnects or Ctrl+C in your shell.
+The installer prompts for a shared token on first setup and retains it on updates.
+
+Download the ZIP from GitHub and extract it on both hosts:
+
+    curl -fL https://github.com/ilioner1/3x-ui-aether/raw/refs/heads/aether-socks-bond/downloads/aether-socks-bond.zip -o aether-socks-bond.zip
+    unzip -o aether-socks-bond.zip
+    cd aether-socks-bond
+
+On the foreign gateway, use your existing certificate and private key:
+
+    sudo bash install-service.sh gateway gateway-cert.pem gateway-key.pem
+
+Behind an existing reverse proxy, use `sudo bash install-service.sh gateway --behind-proxy`
+and forward the HTTPS WebSocket path as described below.
+
+On the Iran host, enter the same token and trust the copied public certificate
+if you are using the self-signed certificate from setup:
+
+    sudo bash install-service.sh client wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
+
+For publicly trusted TLS, omit the certificate argument. Pass an optional
+endpoint list as the fourth argument, using `-` when no CA file is needed.
+The installer copies the certificate and key. After renewing them, rerun the
+gateway installer with the renewed files.
+
+Stop any foreground Bond instance using the same port before installing its
+service. To inspect or control a service, use the name for that host:
+
+    sudo systemctl status aether-bond-gateway
+    sudo journalctl -u aether-bond-gateway -f
+    sudo systemctl stop aether-bond-gateway
+
+On the Iran host use `aether-bond-client`. The SOCKS5 outbound remains
+`127.0.0.1:1080`.
+
+## Run manually for testing
 
 On both hosts, use Python 3.11+.
 
