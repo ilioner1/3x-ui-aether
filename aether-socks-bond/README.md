@@ -62,6 +62,12 @@ The Iran connector has logged a successful gateway handshake through
 `162.159.199.230`. Availability of the other peers depends on whether they
 pass the same gateway check from the Iran host.
 
+The defaults also include the upstream IPv6 gateway `2606:4700:103::1`
+and 96 candidates in its WARP MASQUE prefix, `2606:4700:103::/48`.
+These use Aether's IPv4-embedded IPv6 address format and the bundled IPv4
+peer list as a source. They are candidates and require working IPv6 access
+from the Iran host. The gateway URL can remain IPv4.
+
 This uses Cloudflare WARP over MASQUE HTTP/2 on TCP 443. The client starts a
 local Aether instance for each admitted peer. Bond opens its authenticated
 WebSocket to your VPS inside Aether's SOCKS connection. If all WARP paths fail,
@@ -84,6 +90,13 @@ can have 512 unacknowledged frames in flight, and the session bounds its
 retransmission and reordering buffers. IPs may share a Cloudflare edge or
 network link, so throughput depends on the capacity, latency and loss of the
 actual paths. Update the gateway and the client together to use the new window.
+
+In MASQUE mode, discovery alternates between IPv4 and IPv6 candidates. While
+both families have writable paths, uploads and downloads alternate families
+and rotate across the paths within each family. If a family is busy or
+unavailable, the other can continue over MASQUE. Update the gateway first
+to enable family-aware scheduling in both directions. The client journal
+reports the active path counts as `ipv4=` and `ipv6=`.
 If the Aether binary is elsewhere, pass its path through `XUI_AETHER_BINARY`
 using `sudo env XUI_AETHER_BINARY=/absolute/path/to/aether bash install-service.sh ...`.
 

@@ -87,6 +87,28 @@ async def verify_500_paths():
     assert lanes[1].sent == bond.CHUNK + len(b"ready")
     print("PASS: one upload carried data across all 500 simulated paths")
 
+    dual_stack = bond.Pool()
+    ipv4 = [bond.Lane(RecordingSocket(), 0.01, family=4) for _ in range(3)]
+    ipv6 = bond.Lane(RecordingSocket(), 0.01, family=6)
+    for lane in [*ipv4, ipv6]:
+        dual_stack.add(lane)
+    for sequence in range(6):
+        await dual_stack.send(bond.frame(bond.DATA, stream.id, sequence, b"x"))
+    assert [lane.sent for lane in ipv4] == [1, 1, 1]
+    assert ipv6.sent == 3
+    ipv6.websocket.buffered = 2 * bond.CHUNK
+    for sequence in range(6, 10):
+        await dual_stack.send(bond.frame(bond.DATA, stream.id, sequence, b"x"))
+    assert sum(lane.sent for lane in ipv4) == 7
+    assert ipv6.sent == 3
+    ipv6.websocket.buffered = 0
+    await dual_stack.send(bond.frame(bond.DATA, stream.id, 10, b"x"))
+    assert ipv6.sent == 4
+    dual_stack.remove(ipv6)
+    await dual_stack.send(bond.frame(bond.DATA, stream.id, 11, b"x"))
+    assert sum(lane.sent for lane in ipv4) == 8
+    print("PASS: MASQUE data alternates IP families and skips a backed-up family")
+
 
 async def verify():
     with tempfile.TemporaryDirectory() as temp:

@@ -65,9 +65,11 @@ class WarpTransportTest(unittest.IsolatedAsyncioTestCase):
             observed = asyncio.Event()
 
             async def gateway(ws):
+                family = ws.request.headers.get("X-Bond-Path-Family")
                 await ws.send("ready")
                 self.assertEqual(await ws.recv(), "join")
                 await ws.send("joined")
+                observed_family.append(family)
                 observed.set()
                 await ws.wait_closed()
 
@@ -80,8 +82,13 @@ class WarpTransportTest(unittest.IsolatedAsyncioTestCase):
             fake.chmod(0o700)
             async with serve(gateway, "127.0.0.1", 0, ssl=tls) as server:
                 url = f"wss://localhost:{server.sockets[0].getsockname()[1]}/bond"
-                for mode, port in (("masque", 443), ("wireguard", 2408)):
-                    with self.subTest(mode=mode):
+                for mode, port, peer, family in (
+                    ("masque", 443, "162.159.199.230", "4"),
+                    ("masque", 443, "2606:4700:103::1", "6"),
+                    ("wireguard", 2408, "162.159.199.230", None),
+                ):
+                    with self.subTest(mode=mode, family=family):
+                        observed_family = []
                         observed.clear()
                         session = bond.Session()
                         args = argparse.Namespace(
@@ -90,14 +97,16 @@ class WarpTransportTest(unittest.IsolatedAsyncioTestCase):
                             aether_transport="h2", max_paths=2,
                         )
                         task = asyncio.create_task(bond.connect_lane(
-                            args, urlsplit(url), "162.159.199.230", "fixture",
+                            args, urlsplit(url), peer, "fixture",
                             session, {}, asyncio.Lock(), ssl.create_default_context(cafile=cert),
                         ))
                         try:
                             await asyncio.wait_for(observed.wait(), 12)
+                            self.assertEqual(observed_family, [family])
                             async with asyncio.timeout(3):
                                 while not session.pool.lanes:
                                     await asyncio.sleep(0.02)
+                            self.assertEqual(session.pool.lanes[0].family, int(family or 0))
                         finally:
                             task.cancel()
                             with contextlib.suppress(asyncio.CancelledError):

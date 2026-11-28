@@ -12,6 +12,7 @@ import struct
 import time
 import uuid
 from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -40,6 +41,7 @@ class Lane:
     websocket: object
     latency: float
     sent: int = 0
+    family: int = 0
 
     @property
     def buffered(self):
@@ -49,21 +51,58 @@ class Lane:
 class Pool:
     def __init__(self):
         self.lanes = []
-        self.positions = {True: 0, False: 0}
+        self.positions = {True: 0, False: 0, 4: 0, 6: 0}
+        self.families = {4: [], 6: []}
+        self.next_family = 4
         self.available = asyncio.Event()
         self.last_online = time.monotonic()
         self.closed = False
 
     def add(self, lane):
         self.lanes.append(lane)
+        if lane.family:
+            self.families[lane.family].append(lane)
         self.available.set()
 
     def remove(self, lane):
         if lane in self.lanes:
             self.lanes.remove(lane)
+            if lane.family:
+                self.families[lane.family].remove(lane)
         if not self.lanes:
             self.available.clear()
             self.last_online = time.monotonic()
+
+    def choose_lane(self, lanes, position):
+        start = self.positions[position] % len(lanes)
+        index = start
+        lane = lanes[index]
+        least_buffered = lane.buffered
+        for offset in range(1, len(lanes)):
+            if least_buffered < 2 * CHUNK:
+                break
+            candidate_index = (start + offset) % len(lanes)
+            candidate = lanes[candidate_index]
+            buffered = candidate.buffered
+            if buffered < least_buffered:
+                index, lane, least_buffered = candidate_index, candidate, buffered
+        return lane, index, least_buffered
+
+    def select_lane(self, is_data):
+        if is_data and self.families[4] and self.families[6]:
+            family = self.next_family
+            lane, index, buffered = self.choose_lane(self.families[family], family)
+            if buffered >= 2 * CHUNK:
+                other = 10 - family
+                candidate, candidate_index, candidate_buffered = self.choose_lane(self.families[other], other)
+                if candidate_buffered < buffered:
+                    family, lane, index = other, candidate, candidate_index
+            self.positions[family] = index + 1
+            self.next_family = 10 - family
+            return lane
+        lane, index, _ = self.choose_lane(self.lanes, is_data)
+        self.positions[is_data] = index + 1
+        return lane
 
     async def send(self, message):
         while not self.closed:
@@ -74,19 +113,7 @@ class Pool:
             if not self.lanes:
                 continue
             is_data = message[0] == DATA
-            start = self.positions[is_data] % len(self.lanes)
-            index = start
-            lane = self.lanes[index]
-            least_buffered = lane.buffered
-            for offset in range(1, len(self.lanes)):
-                if least_buffered < 2 * CHUNK:
-                    break
-                candidate_index = (start + offset) % len(self.lanes)
-                candidate = self.lanes[candidate_index]
-                buffered = candidate.buffered
-                if buffered < least_buffered:
-                    index, lane, least_buffered = candidate_index, candidate, buffered
-            self.positions[is_data] = index + 1
+            lane = self.select_lane(is_data)
             try:
                 await lane.websocket.send(message)
                 if is_data:
@@ -387,11 +414,16 @@ def load_endpoints(filename):
 
 async def connect_lane(args, authority, address, instance, session, active, selection, tls_context):
     port = authority.port or 443
+    warp_mode = args.aether_mode if getattr(args, "aether_bin", None) else None
+    family = ipaddress.ip_address(address).version if warp_mode == "masque" else 0
+    headers = {"Authorization": "Bearer " + args.secret, "X-Bond-Session": instance}
+    if family:
+        headers["X-Bond-Path-Family"] = str(family)
     async with contextlib.AsyncExitStack() as resources:
         options = await resources.enter_async_context(lane_dial_options(args, address, authority.hostname, port))
         websocket = await resources.enter_async_context(connect(
             args.url,
-            additional_headers={"Authorization": "Bearer " + args.secret, "X-Bond-Session": instance},
+            additional_headers=headers,
             server_hostname=authority.hostname,
             ssl=tls_context,
             proxy=None,
@@ -409,8 +441,15 @@ async def connect_lane(args, authority, address, instance, session, active, sele
         latency = await asyncio.wait_for(pong, 5)
         async with selection:
             if len(active) >= args.max_paths:
-                worst_address, worst = max(active.items(), key=lambda item: item[1].latency)
-                if latency >= worst.latency * 0.8:
+                candidates = active.items()
+                missing_family = family and not session.pool.families[family]
+                if family and args.max_paths > 1:
+                    candidates = [
+                        (peer, lane) for peer, lane in candidates
+                        if lane.family == family or len(session.pool.families[lane.family]) > 1
+                    ]
+                worst_address, worst = max(candidates, key=lambda item: item[1].latency)
+                if not (missing_family and args.max_paths > 1) and latency >= worst.latency * 0.8:
                     return
                 session.pool.remove(worst)
                 active.pop(worst_address, None)
@@ -418,18 +457,25 @@ async def connect_lane(args, authority, address, instance, session, active, sele
             await websocket.send("join")
             if await asyncio.wait_for(websocket.recv(), 5) != "joined":
                 return
-            lane = Lane(websocket, latency)
+            lane = Lane(websocket, latency, family=family)
             active[address] = lane
             session.pool.add(lane)
-        transport = f"WARP/{args.aether_mode}" if getattr(args, "aether_bin", None) else "direct"
-        print(f"Path online {address} RTT={latency*1000:.0f}ms active={len(active)} transport={transport}", flush=True)
+        transport = f"WARP/{warp_mode}" if warp_mode else "direct"
+        def path_counts():
+            counts = f"active={len(active)}"
+            if family:
+                pool = session.pool
+                counts += f" ipv4={len(pool.families[4])} ipv6={len(pool.families[6])}"
+            return counts
+
+        print(f"Path online {address} RTT={latency*1000:.0f}ms {path_counts()} transport={transport}", flush=True)
         try:
             await session.receive(websocket)
         finally:
             if active.get(address) is lane:
                 active.pop(address)
                 session.pool.remove(lane)
-            print(f"Path offline {address} active={len(active)}", flush=True)
+            print(f"Path offline {address} {path_counts()}", flush=True)
 
 
 async def discovery(args, authority, session):
@@ -441,6 +487,10 @@ async def discovery(args, authority, session):
     while True:
         try:
             addresses = load_endpoints(args.endpoints)
+            if getattr(args, "aether_mode", None) == "masque" and getattr(args, "aether_bin", None):
+                ipv4 = [address for address in addresses if ":" not in address]
+                ipv6 = [address for address in addresses if ":" in address]
+                addresses = [address for pair in zip_longest(ipv4, ipv6) for address in pair if address]
             if not addresses:
                 if getattr(args, "aether_bin", None):
                     raise ValueError("WARP mode requires a non-empty list of Cloudflare peers")
@@ -488,6 +538,8 @@ async def gateway(args):
         if websocket.request.path != args.path or not provided.isascii() or not hmac.compare_digest(provided, expected):
             await websocket.close(code=1008)
             return
+        family_headers = headers.get_all("X-Bond-Path-Family")
+        family = int(family_headers[0]) if family_headers in (["4"], ["6"]) else 0
         try:
             await websocket.send("ready")
             if await asyncio.wait_for(websocket.recv(), 10) != "join":
@@ -504,7 +556,7 @@ async def gateway(args):
         if len(session.pool.lanes) >= args.max_paths:
             await websocket.close(code=1013)
             return
-        lane = Lane(websocket, 0)
+        lane = Lane(websocket, 0, family=family)
         session.pool.add(lane)
         try:
             await websocket.send("joined")

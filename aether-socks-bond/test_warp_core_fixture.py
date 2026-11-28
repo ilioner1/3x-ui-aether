@@ -34,7 +34,9 @@ async def main():
     flags = sys.argv[1:]
     assert ("--masque" in flags) != ("--wg" in flags)
     expected = ":443" if "--masque" in flags else ":2408"
-    assert flags[flags.index("--peer") + 1] == "162.159.199.230" + expected
+    peer = flags[flags.index("--peer") + 1]
+    version = flags[flags.index("--ip") + 1]
+    assert peer == ("[2606:4700:103::1]" if version == "v6" else "162.159.199.230") + expected
     host, port = os.environ["AETHER_SOCKS"].rsplit(":", 1)
     assert host == "127.0.0.1"
     async with await asyncio.start_server(forward, host, int(port)) as server:
