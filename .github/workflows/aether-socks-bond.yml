@@ -1,0 +1,78 @@
+name: Aether SOCKS Bond CI
+on:
+  pull_request:
+    paths:
+      - 'aether-socks-bond/**'
+      - 'downloads/aether-socks-bond.zip'
+      - '.github/workflows/aether-socks-bond.yml'
+permissions:
+  contents: read
+jobs:
+  socks-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r aether-socks-bond/requirements.txt 'cryptography>=44,<51'
+      - name: Verify downloadable ZIP matches the sources
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          with ZipFile("downloads/aether-socks-bond.zip") as archive:
+              assert archive.testzip() is None
+              names = {
+                  "aether-socks-bond/" + name
+                  for name in ("README.md", "bond.py", "requirements.txt", "endpoints.example.txt", "install-service.sh", "aether_transport.py", "peers-masque.txt", "peers-wireguard.txt")
+              }
+              assert set(archive.namelist()) == names
+              for name in names:
+                  assert archive.read(name) == Path(name).read_bytes(), name
+          PY
+      - name: Verify ordered SOCKS5 traffic, two active paths and failover
+        run: python aether-socks-bond/test_bond_integration.py
+
+      - name: Verify both WARP transports and no direct fallback
+        run: python aether-socks-bond/test_warp_transport.py -v
+      - name: Verify systemd installation and automatic restart
+        run: |
+          cd aether-socks-bond
+          bash -n install-service.sh
+          test_dir=$(mktemp -d)
+          chmod 700 "$test_dir"
+          (umask 077; openssl rand -hex 32 > "$test_dir/token")
+          openssl req -x509 -newkey rsa:2048 -noenc -days 1 \
+            -subj /CN=127.0.0.1 -addext 'subjectAltName=IP:127.0.0.1' \
+            -out "$test_dir/cert.pem" -keyout "$test_dir/key.pem"
+          sudo env BOND_TOKEN_FILE="$test_dir/token" bash install-service.sh gateway "$test_dir/cert.pem" "$test_dir/key.pem"
+          sudo env BOND_TOKEN_FILE="$test_dir/token" bash install-service.sh client wss://127.0.0.1/bond "$test_dir/cert.pem"
+          sudo systemctl is-enabled aether-bond-gateway aether-bond-client
+          wait_path() {
+            for i in {1..40}; do
+              if sudo journalctl -u aether-bond-client --no-pager -o cat | grep -F 'Path online'; then
+                return 0
+              fi
+              sleep 0.25
+            done
+            sudo journalctl -u aether-bond-gateway -u aether-bond-client --no-pager
+            return 1
+          }
+          wait_path
+          old_pid=$(systemctl show -p MainPID --value aether-bond-gateway)
+          sudo kill -KILL "$old_pid"
+          for i in {1..40}; do
+            new_pid=$(systemctl show -p MainPID --value aether-bond-gateway)
+            if [[ $new_pid != 0 && $new_pid != "$old_pid" ]] && systemctl is-active --quiet aether-bond-gateway; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          sudo journalctl -u aether-bond-gateway -u aether-bond-client --no-pager
+          exit 1
