@@ -55,10 +55,12 @@ the Iran host using the Aether v2.4.0 binary bundled with the native X-UI fork:
 
 To replace an existing peer list with the packaged MASQUE defaults, add
 `peers-masque.txt` as the fourth argument. An update with no fourth argument
-keeps the installed list. The packaged defaults contain individual addresses
-from the existing Aether outbounds. The Iran connector has logged a successful
-gateway handshake through `162.159.199.230`. The other addresses are
-candidates and must pass the same gateway check from the Iran host.
+keeps the installed list. The packaged defaults combine the existing Aether
+outbounds with the explicit IPv4 gateway candidates in the
+[Aether revision pinned by PattNG](https://github.com/patterniha/Aether/blob/d58f9d568083129ce2c767c85054021eb3ee6a38/aether/src/prober.rs#L51-L360).
+The Iran connector has logged a successful gateway handshake through
+`162.159.199.230`. Availability of the other peers depends on whether they
+pass the same gateway check from the Iran host.
 
 This uses Cloudflare WARP over MASQUE HTTP/2 on TCP 443. The client starts a
 local Aether instance for each admitted peer. Bond opens its authenticated
