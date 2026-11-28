@@ -81,18 +81,25 @@ async def warp_socket(args, peer, host, port):
             cwd=peer_state, env=env, stdout=log, stderr=log,
         )
     upstream = None
+    stage = "starting the local SOCKS listener"
     try:
         async with asyncio.timeout(45):
             while proc.returncode is None:
                 try:
+                    stage = "opening the gateway connection through Aether SOCKS"
                     upstream = await open_socks_socket(local_port, host, port)
                 except ConnectionRefusedError:
+                    stage = "starting the local SOCKS listener"
                     await asyncio.sleep(0.2)
                 else:
                     break
         if upstream is None:
             raise OSError(f"Aether stopped before becoming ready; see {peer_state / 'core.log'}")
         yield upstream
+    except TimeoutError as error:
+        if upstream is not None:
+            raise
+        raise TimeoutError(f"Timed out {stage}; see {peer_state / 'core.log'}") from error
     finally:
         if upstream is not None:
             upstream.close()

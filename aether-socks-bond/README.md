@@ -55,10 +55,10 @@ the Iran host using the Aether v2.4.0 binary bundled with the native X-UI fork:
 
 To replace an existing peer list with the packaged MASQUE defaults, add
 `peers-masque.txt` as the fourth argument. An update with no fourth argument
-keeps the installed list. The packaged defaults include the existing sample
-peer and the 254 host addresses in Cloudflare One's documented MASQUE IPv4
-range, `162.159.197.0/24`. Availability depends on the Aether client and
-the Iran host's network.
+keeps the installed list. The packaged defaults contain individual addresses
+from the existing Aether outbounds. The Iran connector has logged a successful
+gateway handshake through `162.159.199.230`. The other addresses are
+candidates and must pass the same gateway check from the Iran host.
 
 This uses Cloudflare WARP over MASQUE HTTP/2 on TCP 443. The client starts a
 local Aether instance for each admitted peer. Bond opens its authenticated
@@ -90,7 +90,8 @@ Review the tunnel log on the Iran host:
     sudo journalctl -u aether-bond-client -n 40 --no-pager
 
 Look for `transport=WARP/masque` or `transport=WARP/wireguard` in a
-`Path online` message. The result of an IP check through SOCKS should still
+`Path online` message. If a path fails, the client journal shows the failure
+and any relevant per-peer Aether log path. The result of an IP check through SOCKS should still
 be your foreign VPS address. To enforce that the VPS cannot be reached directly
 from a given source, apply an ingress rule on the foreign VPS separately.
 Determine its actual observed WARP source before narrowing any firewall rule.

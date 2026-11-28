@@ -463,7 +463,8 @@ async def discovery(args, authority, session):
             for finished in [key for key, task in probes.items() if task.done()]:
                 task = probes.pop(finished)
                 if not task.cancelled() and (error := task.exception()) is not None:
-                    print(f"Path check failed {finished}: {error}", flush=True)
+                    reason = str(error) or type(error).__name__
+                    print(f"Path check failed {finished}: {reason}", flush=True)
             if address not in probes and len(probes) < args.max_paths + 64:
                 probes[address] = session.start(
                     connect_lane(args, authority, address, instance, session, active, selection, tls_context)
