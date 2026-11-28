@@ -46,7 +46,42 @@ service. To inspect or control a service, use the name for that host:
 On the Iran host use `aether-bond-client`. The SOCKS5 outbound remains
 `127.0.0.1:1080`.
 
-## Run manually for testing
+## Route the Iran connector through Cloudflare WARP
+
+The foreign gateway and its certificate stay the same. Install the client on
+the Iran host using the Aether v2.4.0 binary bundled with the native X-UI fork:
+
+    sudo bash install-service.sh client-masque wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
+
+This uses Cloudflare WARP over MASQUE HTTP/2 on TCP 443. The client starts a
+local Aether instance for each admitted peer. Bond opens its authenticated
+WebSocket to your VPS inside Aether's SOCKS connection. If all WARP paths fail,
+SOCKS requests fail. They never switch to a direct connection to the VPS.
+
+To use WARP over WireGuard, install the same client service in WireGuard mode
+with its own set of WARP WireGuard peers on UDP 2408:
+
+    sudo bash install-service.sh client-wireguard wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
+
+Pass a custom peer file after the certificate argument. Use an IP per line and
+only include verified candidates for the selected protocol. The service
+keeps its copy in `/opt/aether-bond/client/peers-masque.txt` or
+`/opt/aether-bond/client/peers-wireguard.txt` and reloads it on each discovery
+pass. The starter lists are examples and haven't been verified from your host.
+If the Aether binary is elsewhere, pass its path through `XUI_AETHER_BINARY`
+using `sudo env XUI_AETHER_BINARY=/absolute/path/to/aether bash install-service.sh ...`.
+
+Review the tunnel log on the Iran host:
+
+    sudo journalctl -u aether-bond-client -n 40 --no-pager
+
+Look for `transport=WARP/masque` or `transport=WARP/wireguard` in a
+`Path online` message. The result of an IP check through SOCKS should still
+be your foreign VPS address. To enforce that the VPS cannot be reached directly
+from a given source, apply an ingress rule on the foreign VPS separately.
+Determine its actual observed WARP source before narrowing any firewall rule.
+
+## Run manually for direct-mode testing
 
 On both hosts, use Python 3.11+.
 

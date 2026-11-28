@@ -6,6 +6,8 @@ usage() {
     echo "Usage: sudo bash install-service.sh gateway CERT KEY"
     echo "       sudo bash install-service.sh gateway --behind-proxy"
     echo "       sudo bash install-service.sh client WSS_URL [CA_FILE|-] [ENDPOINTS_FILE]"
+    echo "       sudo bash install-service.sh client-masque WSS_URL CA_FILE|- [PEER_FILE]"
+    echo "       sudo bash install-service.sh client-wireguard WSS_URL CA_FILE|- [PEER_FILE]"
 }
 
 if (( EUID != 0 )) || [[ ! -d /run/systemd/system ]]; then
@@ -15,7 +17,7 @@ fi
 
 role=${1:-}
 source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
-cert= key= ca= endpoints= capabilities=
+cert= key= ca= endpoints= capabilities= warp_mode= aether_binary=
 case "$role" in
     gateway)
         if [[ $# -eq 2 && $2 == --behind-proxy ]]; then
@@ -39,7 +41,12 @@ case "$role" in
             exit 2
         fi
         ;;
-    client)
+    client|client-masque|client-wireguard)
+        case "$role" in
+            client-masque) warp_mode=masque ;;
+            client-wireguard) warp_mode=wireguard ;;
+        esac
+        role=client
         if (( $# < 2 || $# > 4 )) || [[ ! $2 =~ ^wss://[A-Za-z0-9.:-]+/[A-Za-z0-9/_-]+$ ]]; then
             usage
             exit 2
@@ -54,6 +61,14 @@ case "$role" in
         if [[ -n ${4:-} ]]; then
             test -r "$4"
             endpoints=$4
+        fi
+        if [[ -n $warp_mode ]]; then
+            aether_binary=${XUI_AETHER_BINARY:-/usr/local/x-ui/bin/aether}
+            if [[ ! -x $aether_binary ]]; then
+                echo "Aether core not found. Set XUI_AETHER_BINARY to the executable from your x-ui Aether installation." >&2
+                exit 1
+            fi
+            args+=" --aether-bin /opt/aether-bond/client/aether --aether-mode $warp_mode --aether-state /var/lib/aether-bond-client"
         fi
         ;;
     *)
@@ -103,11 +118,20 @@ if [[ -n $ca ]]; then
     install -m 0600 "$ca" "$private_dir/gateway-ca.pem"
     credentials+=$'\n'"LoadCredential=gateway-ca:$private_dir/gateway-ca.pem"
 fi
-if [[ -n $endpoints ]]; then
+if [[ -n $warp_mode ]]; then
+    peer_file="$service_dir/peers-$warp_mode.txt"
+    if [[ -n $endpoints ]]; then
+        install -m 0644 "$endpoints" "$peer_file"
+    elif [[ ! -s $peer_file ]]; then
+        install -m 0644 "$source_dir/peers-$warp_mode.txt" "$peer_file"
+    fi
+    install -m 0755 "$aether_binary" "$service_dir/aether"
+    args+=" --endpoints $peer_file --probe-rate 4"
+elif [[ -n $endpoints ]]; then
     install -m 0644 "$endpoints" "$service_dir/endpoints.txt"
     args+=" --endpoints $service_dir/endpoints.txt --probe-rate 50"
 fi
-install -m 0644 "$source_dir/bond.py" "$source_dir/requirements.txt" "$service_dir/"
+install -m 0644 "$source_dir/bond.py" "$source_dir/aether_transport.py" "$source_dir/requirements.txt" "$service_dir/"
 (
     umask 022
     python3 -m venv "$service_dir/.venv"
@@ -124,6 +148,8 @@ StartLimitIntervalSec=0
 [Service]
 Type=exec
 DynamicUser=yes
+StateDirectory=aether-bond-$role
+StateDirectoryMode=0700
 WorkingDirectory=$service_dir
 $credentials
 $capabilities

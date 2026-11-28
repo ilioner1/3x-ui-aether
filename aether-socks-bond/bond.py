@@ -17,7 +17,9 @@ from urllib.parse import urlsplit
 
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
-from websockets.exceptions import ConnectionClosed, InvalidHandshake
+from websockets.exceptions import ConnectionClosed
+
+from aether_transport import lane_dial_options
 
 OPEN, OK, FAIL, DATA, FIN, ACK, RESET = range(7)
 HEADER = struct.Struct("!B16sI")
@@ -353,21 +355,22 @@ def load_endpoints(filename):
 
 async def connect_lane(args, authority, address, instance, session, active, selection, tls_context):
     port = authority.port or 443
-    async with connect(
-        args.url,
-        additional_headers={"Authorization": "Bearer " + args.secret, "X-Bond-Session": instance},
-        host=address,
-        port=port,
-        server_hostname=authority.hostname,
-        ssl=tls_context,
-        proxy=None,
-        open_timeout=6,
-        ping_interval=10,
-        ping_timeout=6,
-        close_timeout=1,
-        compression=None,
-        max_size=HEADER.size + CHUNK,
-    ) as websocket:
+    async with contextlib.AsyncExitStack() as resources:
+        options = await resources.enter_async_context(lane_dial_options(args, address, authority.hostname, port))
+        websocket = await resources.enter_async_context(connect(
+            args.url,
+            additional_headers={"Authorization": "Bearer " + args.secret, "X-Bond-Session": instance},
+            server_hostname=authority.hostname,
+            ssl=tls_context,
+            proxy=None,
+            open_timeout=6,
+            ping_interval=10,
+            ping_timeout=6,
+            close_timeout=1,
+            compression=None,
+            max_size=HEADER.size + CHUNK,
+            **options,
+        ))
         if await asyncio.wait_for(websocket.recv(), 5) != "ready":
             return
         pong = await websocket.ping()
@@ -386,7 +389,8 @@ async def connect_lane(args, authority, address, instance, session, active, sele
             lane = Lane(websocket, latency)
             active[address] = lane
             session.pool.add(lane)
-        print(f"Path online {address} RTT={latency*1000:.0f}ms active={len(active)}", flush=True)
+        transport = f"WARP/{args.aether_mode}" if getattr(args, "aether_bin", None) else "direct"
+        print(f"Path online {address} RTT={latency*1000:.0f}ms active={len(active)} transport={transport}", flush=True)
         try:
             await session.receive(websocket)
         finally:
@@ -406,6 +410,8 @@ async def discovery(args, authority, session):
         try:
             addresses = load_endpoints(args.endpoints)
             if not addresses:
+                if getattr(args, "aether_bin", None):
+                    raise ValueError("WARP mode requires a non-empty list of Cloudflare peers")
                 resolved = await asyncio.get_running_loop().getaddrinfo(
                     authority.hostname, authority.port or 443, type=socket.SOCK_STREAM
                 )
@@ -423,8 +429,9 @@ async def discovery(args, authority, session):
                 del probes[address]
         for address in addresses:
             for finished in [key for key, task in probes.items() if task.done()]:
-                with contextlib.suppress(OSError, ValueError, TimeoutError, ConnectionClosed, InvalidHandshake):
-                    probes.pop(finished).result()
+                task = probes.pop(finished)
+                if not task.cancelled() and (error := task.exception()) is not None:
+                    print(f"Path check failed {finished}: {error}", flush=True)
             if address not in probes and len(probes) < args.max_paths + 64:
                 probes[address] = session.start(
                     connect_lane(args, authority, address, instance, session, active, selection, tls_context)
@@ -505,6 +512,12 @@ async def client(args):
     authority = urlsplit(args.url)
     if authority.scheme != "wss" or not authority.hostname or authority.username or authority.password:
         raise SystemExit("A wss:// URL with a certificate matching the hostname is required.")
+    if args.aether_bin:
+        args.aether_bin = str(Path(args.aether_bin).resolve())
+        if not os.access(args.aether_bin, os.X_OK) or not args.endpoints or not args.aether_state:
+            raise SystemExit("WARP mode requires an Aether binary, --endpoints and --aether-state.")
+        if args.aether_port is None:
+            args.aether_port = 2408 if args.aether_mode == "wireguard" else 443
     session = Session()
     session.start(discovery(args, authority, session))
     session.start(session.maintain())
@@ -533,6 +546,11 @@ def main():
     local.add_argument("--socks-port", type=int, default=1080)
     local.add_argument("--endpoints")
     local.add_argument("--ca-file")
+    local.add_argument("--aether-bin")
+    local.add_argument("--aether-state")
+    local.add_argument("--aether-mode", choices=["masque", "wireguard"], default="masque")
+    local.add_argument("--aether-port", type=int, choices=range(1, 65536), metavar="1..65535")
+    local.add_argument("--aether-transport", choices=["h2", "h3"], default="h2")
     local.add_argument("--probe-rate", type=int, default=10, choices=range(1, 51), metavar="1..50")
     for mode in (remote, local):
         mode.add_argument("--max-paths", type=int, default=8, choices=range(1, 501), metavar="1..500")

@@ -114,4 +114,5 @@ async def verify():
             await asyncio.gather(gateway, *jobs, return_exceptions=True)
 
 
-asyncio.run(verify())
+if __name__ == "__main__":
+    asyncio.run(verify())

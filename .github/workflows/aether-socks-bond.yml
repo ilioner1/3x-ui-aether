@@ -30,7 +30,7 @@ jobs:
               assert archive.testzip() is None
               names = {
                   "aether-socks-bond/" + name
-                  for name in ("README.md", "bond.py", "endpoints.example.txt", "requirements.txt", "install-service.sh")
+                  for name in ("README.md", "bond.py", "requirements.txt", "endpoints.example.txt", "install-service.sh", "aether_transport.py", "peers-masque.txt", "peers-wireguard.txt")
               }
               assert set(archive.namelist()) == names
               for name in names:
@@ -39,6 +39,8 @@ jobs:
       - name: Verify ordered SOCKS5 traffic, two active paths and failover
         run: python aether-socks-bond/test_bond_integration.py
 
+      - name: Verify both WARP transports and no direct fallback
+        run: python aether-socks-bond/test_warp_transport.py -v
       - name: Verify systemd installation and automatic restart
         run: |
           cd aether-socks-bond
