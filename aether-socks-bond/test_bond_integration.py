@@ -50,6 +50,44 @@ async def wait_for(predicate):
             await asyncio.sleep(0.02)
 
 
+async def verify_500_paths():
+    class RecordingSocket:
+        def __init__(self):
+            self.transport = self
+            self.buffered = 0
+            self.frames = []
+
+        def get_write_buffer_size(self):
+            return self.buffered
+
+        async def send(self, message):
+            self.frames.append(message)
+
+    session = bond.Session()
+    lanes = [bond.Lane(RecordingSocket(), 0.01) for _ in range(500)]
+    for lane in lanes:
+        session.pool.add(lane)
+    stream = bond.Stream(session, bytes(16))
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"x" * bond.CHUNK * len(lanes))
+    reader.feed_eof()
+    await asyncio.wait_for(stream.upload(reader), 5)
+    for sequence, lane in enumerate(lanes):
+        first = lane.websocket.frames[0]
+        assert bond.HEADER.unpack_from(first) == (bond.DATA, stream.id, sequence)
+        assert lane.sent == bond.CHUNK
+    assert len(stream.pending) == 501
+    stream.accept(bond.ACK, 501, b"")
+    assert not stream.pending
+
+    lanes[0].websocket.buffered = 2 * bond.CHUNK
+    session.pool.positions[True] = 0
+    await stream.send(bond.DATA, 501, b"ready")
+    assert lanes[0].sent == bond.CHUNK
+    assert lanes[1].sent == bond.CHUNK + len(b"ready")
+    print("PASS: one upload carried data across all 500 simulated paths")
+
+
 async def verify():
     with tempfile.TemporaryDirectory() as temp:
         directory = Path(temp)
@@ -115,4 +153,5 @@ async def verify():
 
 
 if __name__ == "__main__":
+    asyncio.run(verify_500_paths())
     asyncio.run(verify())

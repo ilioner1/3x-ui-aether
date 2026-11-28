@@ -24,7 +24,8 @@ from aether_transport import lane_dial_options
 OPEN, OK, FAIL, DATA, FIN, ACK, RESET = range(7)
 HEADER = struct.Struct("!B16sI")
 CHUNK = 16 * 1024
-WINDOW = 32
+WINDOW = 512
+SESSION_BUFFER_FRAMES = 4096
 RETRY = 1.0
 MAX_STREAMS = 256
 SESSION_GRACE = 45
@@ -39,6 +40,10 @@ class Lane:
     websocket: object
     latency: float
     sent: int = 0
+
+    @property
+    def buffered(self):
+        return self.websocket.transport.get_write_buffer_size()
 
 
 class Pool:
@@ -62,14 +67,26 @@ class Pool:
 
     async def send(self, message):
         while not self.closed:
-            await asyncio.wait_for(self.available.wait(), SESSION_GRACE)
+            if not self.lanes:
+                await asyncio.wait_for(self.available.wait(), SESSION_GRACE)
             if self.closed:
                 break
             if not self.lanes:
                 continue
             is_data = message[0] == DATA
-            lane = self.lanes[self.positions[is_data] % len(self.lanes)]
-            self.positions[is_data] += 1
+            start = self.positions[is_data] % len(self.lanes)
+            index = start
+            lane = self.lanes[index]
+            least_buffered = lane.buffered
+            for offset in range(1, len(self.lanes)):
+                if least_buffered < 2 * CHUNK:
+                    break
+                candidate_index = (start + offset) % len(self.lanes)
+                candidate = self.lanes[candidate_index]
+                buffered = candidate.buffered
+                if buffered < least_buffered:
+                    index, lane, least_buffered = candidate_index, candidate, buffered
+            self.positions[is_data] = index + 1
             try:
                 await lane.websocket.send(message)
                 if is_data:
@@ -105,6 +122,7 @@ class Stream:
         while True:
             await self.credit.wait()
             payload = await reader.read(CHUNK)
+            await self.session.send_credit.acquire()
             sequence = self.send_next
             self.send_next += 1
             kind = DATA if payload else FIN
@@ -120,7 +138,8 @@ class Stream:
         while not self.remote_finished:
             await self.received.wait()
             while self.receive_next in self.incoming:
-                kind, payload = self.incoming.pop(self.receive_next)
+                kind, payload, reserved = self.incoming.pop(self.receive_next)
+                self.session.reorder_frames -= reserved
                 if kind == FIN:
                     writer.write_eof()
                     await writer.drain()
@@ -147,13 +166,19 @@ class Stream:
         if kind == ACK:
             if self.acked < sequence <= self.send_next:
                 for index in range(self.acked, sequence):
-                    self.pending.pop(index, None)
+                    if self.pending.pop(index, None) is not None:
+                        self.session.send_credit.release()
                 self.acked = sequence
                 self.credit.set()
         elif kind in (DATA, FIN):
             if not self.remote_finished and self.receive_next <= sequence < self.receive_next + WINDOW:
-                self.incoming.setdefault(sequence, (kind, data))
-                self.received.set()
+                reserved = sequence != self.receive_next
+                if sequence not in self.incoming and (
+                    not reserved or self.session.reorder_frames < SESSION_BUFFER_FRAMES
+                ):
+                    self.incoming[sequence] = (kind, data, reserved)
+                    self.session.reorder_frames += reserved
+                    self.received.set()
             elif sequence < self.receive_next:
                 self.session.repeat_ack(self)
         elif kind in (OK, FAIL):
@@ -166,6 +191,8 @@ class Stream:
 class Session:
     def __init__(self, gateway=False, allow_private=False):
         self.pool = Pool()
+        self.send_credit = asyncio.BoundedSemaphore(SESSION_BUFFER_FRAMES)
+        self.reorder_frames = 0
         self.streams = {}
         self.retired = {}
         self.gateway = gateway
@@ -187,6 +214,11 @@ class Session:
     def retire(self, stream):
         self.streams.pop(stream.id, None)
         self.retired[stream.id] = (time.monotonic(), stream.receive_next)
+        for _ in stream.pending:
+            self.send_credit.release()
+        stream.pending.clear()
+        self.reorder_frames -= sum(reserved for _, _, reserved in stream.incoming.values())
+        stream.incoming.clear()
         if stream.writer:
             stream.writer.close()
 
@@ -250,7 +282,7 @@ class Session:
                     (index, message) for index, (message, sent) in stream.pending.items()
                     if now - sent >= RETRY
                 ]
-                for index, message in expired[:4]:
+                for index, message in expired[:16]:
                     if index in stream.pending:
                         stream.pending[index] = (message, now)
                         with contextlib.suppress(ConnectionError, TimeoutError):

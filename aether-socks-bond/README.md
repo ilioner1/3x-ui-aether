@@ -29,7 +29,7 @@ and forward the HTTPS WebSocket path as described below.
 On the Iran host, enter the same token and trust the copied public certificate
 if you are using the self-signed certificate from setup:
 
-    sudo bash install-service.sh client wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
+    sudo bash install-service.sh client-masque wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
 
 For publicly trusted TLS, omit the certificate argument. Pass an optional
 endpoint list as the fourth argument, using `-` when no CA file is needed.
@@ -53,6 +53,13 @@ the Iran host using the Aether v2.4.0 binary bundled with the native X-UI fork:
 
     sudo bash install-service.sh client-masque wss://YOUR_FOREIGN_IP/bond gateway-cert.pem
 
+To replace an existing peer list with the packaged MASQUE defaults, add
+`peers-masque.txt` as the fourth argument. An update with no fourth argument
+keeps the installed list. The packaged defaults include the existing sample
+peer and the 254 host addresses in Cloudflare One's documented MASQUE IPv4
+range, `162.159.197.0/24`. Availability depends on the Aether client and
+the Iran host's network.
+
 This uses Cloudflare WARP over MASQUE HTTP/2 on TCP 443. The client starts a
 local Aether instance for each admitted peer. Bond opens its authenticated
 WebSocket to your VPS inside Aether's SOCKS connection. If all WARP paths fail,
@@ -68,6 +75,13 @@ only include verified candidates for the selected protocol. The service
 keeps its copy in `/opt/aether-bond/client/peers-masque.txt` or
 `/opt/aether-bond/client/peers-wireguard.txt` and reloads it on each discovery
 pass. The starter lists are examples and haven't been verified from your host.
+The list can hold up to 10,000 unique IPs. With traffic available, Bond rotates
+data frames across up to 500 online paths in each direction and skips sockets
+whose write buffers are backed up when another socket is ready. One stream
+can have 512 unacknowledged frames in flight, and the session bounds its
+retransmission and reordering buffers. IPs may share a Cloudflare edge or
+network link, so throughput depends on the capacity, latency and loss of the
+actual paths. Update the gateway and the client together to use the new window.
 If the Aether binary is elsewhere, pass its path through `XUI_AETHER_BINARY`
 using `sudo env XUI_AETHER_BINARY=/absolute/path/to/aether bash install-service.sh ...`.
 
